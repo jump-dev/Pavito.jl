@@ -18,10 +18,10 @@ type PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
 
     solution::Vector{Float64}
     status::Symbol
+    totaltime::Float64
     objval::Float64
     objbound::Float64
     iterations::Int
-    totaltime::Float64
 
     numVar::Int
     numIntVar::Int
@@ -47,14 +47,14 @@ type PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
     function PavitoNonlinearModel(log_level, timeout, rel_gap, mip_solver_drives, mip_solver, cont_solver)
         m = new()
 
-        m.log_level = log_level,
-        m.timeout = timeout,
-        m.rel_gap = rel_gap,
-        m.mip_solver_drives = mip_solver_drives,
-        m.mip_solver = mip_solver,
-        m.cont_solver = cont_solver,
+        m.log_level = log_level
+        m.timeout = timeout
+        m.rel_gap = rel_gap
+        m.mip_solver_drives = mip_solver_drives
+        m.mip_solver = mip_solver
+        m.cont_solver = cont_solver
 
-        m.solution = Float64[]
+        m.solution = Vector{Float64}()
         m.status = :NotLoaded
         m.totaltime = 0.0
 
@@ -283,7 +283,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         end
 
         # add supporting hyperplanes
-        cycle_indicator = (!m.algorithm ? compareIntegerSolutions(m, prev_mip_solution, mip_solution) : false)
+        cycle_indicator = (!m.mip_solver_drives ? compareIntegerSolutions(m, prev_mip_solution, mip_solution) : false)
         # objval and mip_objval are always in minimization sense
         optimality_gap = m.objval - mip_objval
         primal_infeasibility = checkInfeasibility(m, mip_solution)
@@ -306,7 +306,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         end
 
         fixsense = (m.objsense == :Max) ? -1 : 1
-        (m.log_level > 0) && !m.algorithm && OAprintLevel(iter, fixsense*mip_objval, nlp_objval, optimality_gap, fixsense*m.objval, primal_infeasibility, OA_infeasibility)
+        (m.log_level > 0) && !m.mip_solver_drives && OAprintLevel(iter, fixsense*mip_objval, nlp_objval, optimality_gap, fixsense*m.objval, primal_infeasibility, OA_infeasibility)
         (cycle_indicator && m.status != :Optimal) && warn("Mixed-integer cycling detected, terminating Pavito...")
     end
 
@@ -319,7 +319,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         end
     end
 
-    if m.algorithm
+    if m.mip_solver_drives
         addlazycallback(mip_model, nonlinearcallback)
         addheuristiccallback(mip_model, heuristiccallback)
         m.status = solve(mip_model, suppress_warnings=true)
@@ -379,7 +379,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         println("\nPavito finished...\n")
         @printf "Status            = %13s.\n" m.status
         (m.status == :Optimal) && @printf "Optimum objective = %13.5f.\n" m.objval
-        !m.algorithm && @printf "Iterations        = %13d.\n" iter
+        !m.mip_solver_drives && @printf "Iterations        = %13d.\n" iter
         @printf "Total time        = %13.5f sec.\n" m.totaltime
         @printf "MIP total time    = %13.5f sec.\n" cputime_mip
         @printf "NLP total time    = %13.5f sec.\n" cputime_nlp
