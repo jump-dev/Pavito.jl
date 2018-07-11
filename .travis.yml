@@ -1,0 +1,24 @@
+# Documentation: http://docs.travis-ci.com/user/languages/julia/
+language: julia
+os:
+  - linux
+#  - osx # disabled because of day-long queue time
+julia:
+  - 0.6
+#  - nightly # disabled because JuMP not working on nightly as of 07/2017
+# Workaround for https://github.com/travis-ci/travis-ci/issues/4942
+git:
+  depth: 99999
+notifications:
+  email: false
+sudo: false # use a docker worker
+addons:
+  apt_packages:
+  - libgmp-dev
+  - gfortran
+# uncomment the following lines to override the default test script
+#script:
+#  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+#  - julia -e 'Pkg.clone(pwd()); Pkg.build("Pavito"); Pkg.test("Pavito"; coverage=true)'
+after_success:
+  - julia -e 'cd(Pkg.dir("Pavito")); Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())'
