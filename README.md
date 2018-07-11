@@ -2,11 +2,11 @@
 
 # Pavito
 
-Pavito is a **mixed-integer convex programming** (MICP) solver package written in [Julia](http://julialang.org/).
+Pavito is a **mixed-integer convex programming** (MICP) solver package written in [Julia](http://julialang.org/). MICP problems are convex except for restrictions that some variables take binary or integer values.
 
-MICP problems are convex except for restrictions that some variables take binary or integer values. Pavito supports traditional **convex mixed-integer nonlinear programming**, which encodes nonlinearities with smooth functions and uses their derivatives. For **mixed-integer conic programming**, which encodes nonlinearities using a small number of predefined cones, use [Pajarito](https://github.com/JuliaOpt/Pajarito.jl).
+Pavito solves MICP problems by constructing sequential polyhedral outer-approximations of the convex feasible set, similar to [Bonmin](https://projects.coin-or.org/Bonmin). Pavito accesses state-of-the-art MILP solvers and continuous, derivative-based nonlinear programming (NLP) solvers through the MathProgBase interface.
 
-Pavito solves MICP problems by constructing sequential polyhedral outer-approximations of the convex feasible set, similar to [Bonmin](https://projects.coin-or.org/Bonmin). Pavito accesses state-of-the-art MILP solvers and continuous nonlinear programming (NLP) solvers through the MathProgBase interface.
+For algorithms that use a conic solver instead of an NLP solver, use [Pajarito](https://github.com/JuliaOpt/Pajarito.jl). Pajarito is a robust mixed-integer conic solver that can handle such established problem classes as mixed-integer second-order cone programming (MISOCP) and mixed-integer semidefinite programming (MISDP).
 
 ## Installation
 
@@ -31,7 +31,7 @@ There are several convenient ways to model MICPs in Julia and access Pavito:
 [convex-url]: https://github.com/JuliaOpt/Convex.jl
 [mpb-url]: https://github.com/JuliaOpt/MathProgBase.jl
 
-JuMP and Convex.jl are algebraic modeling interfaces, while MathProgBase is a lower-level interface for providing input in raw callback or matrix form. Convex.jl is perhaps the most user-friendly way to provide input in conic form, since it transparently handles conversion of algebraic expressions. JuMP supports general nonlinear smooth functions, e.g. by using `@NLconstraint`. JuMP also supports conic modeling, but requires cones to be explicitly specified, e.g. by using `norm(x) <= t` for second-order cone constraints and `@SDconstraint` for positive semidefinite constraints. Pavito may be accessed through MathProgBase from outside Julia by using the experimental [cmpb](https://github.com/mlubin/cmpb) interface which provides a C API to the low-level conic input format. The [ConicBenchmarkUtilities](https://github.com/mlubin/ConicBenchmarkUtilities.jl) package provides utilities to read files in the [CBF](http://cblib.zib.de/) format.
+JuMP and Convex.jl are algebraic modeling interfaces, while MathProgBase is a lower-level interface for providing input in raw callback or matrix form. Convex.jl is perhaps the most user-friendly way to provide input in conic form, since it transparently handles conversion of algebraic expressions. JuMP supports general nonlinear smooth functions, e.g. by using `@NLconstraint`. JuMP also supports conic modeling, but requires cones to be explicitly specified, e.g. by using `norm(x) <= t` for second-order cone constraints. Pavito may be accessed through MathProgBase from outside Julia by using the experimental [cmpb](https://github.com/mlubin/cmpb) interface which provides a C API to the low-level conic input format. The [ConicBenchmarkUtilities](https://github.com/mlubin/ConicBenchmarkUtilities.jl) package provides utilities to read files in the [CBF](http://cblib.zib.de/) format.
 
 ## MIP and continuous solvers
 
@@ -43,7 +43,7 @@ MIP and continuous solver parameters must be specified through their correspondi
 
 ## Pavito solver options
 
-The following options can be passed to `PavitoSolver()` to modify its behavior (see [solver.jl](https://github.com/mlubin/Pavito.jl/blob/master/src/solver.jl) for default values; **C** means conic algorithm only):
+The following options can be passed to `PavitoSolver()` to modify its behavior:
 
   * `log_level::Int` Verbosity flag: 0 for quiet, higher for basic solve info
   * `timeout::Float64` Time limit for algorithm (in seconds)
@@ -52,9 +52,7 @@ The following options can be passed to `PavitoSolver()` to modify its behavior (
   * `mip_solver::MathProgBase.AbstractMathProgSolver` MILP solver
   * `cont_solver::MathProgBase.AbstractMathProgSolver` Continuous NLP solver
 
-**Pavito is not yet numerically robust and may require tuning of parameters to improve convergence.** If the default parameters don't work for you, please let us know.
-
-For improved Pavito performance, MIP solver integrality tolerance and feasibility tolerances should typically be tightened, for example to `1e-8`.
+**Pavito is not yet numerically robust and may require tuning of parameters to improve convergence.** If the default parameters don't work for you, please let us know. For improved Pavito performance, MILP solver integrality tolerance and feasibility tolerances should typically be tightened, for example to `1e-8`.
 
 ## Bug reports and support
 
