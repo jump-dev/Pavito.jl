@@ -4,8 +4,11 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#=========================================================
+ conic model unit tests
+=========================================================#
 
-# Take a CBF file and solve, redirecting output
+# take a CBF (conic benchmark format) file and solve, redirecting output
 function solve_cbf(testname, probname, solver, redirect)
     flush(STDOUT)
     flush(STDERR)
@@ -62,7 +65,7 @@ function solve_cbf(testname, probname, solver, redirect)
     return (status, time, objval, objbound, sol)
 end
 
-
+# second-order cone model tests
 function run_soc(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
     testname = "SOC optimal"
     probname = "soc_optimal"
@@ -146,7 +149,7 @@ function run_soc(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
     end
 end
 
-
+# exponential and second-order cone tests
 function run_expsoc(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
     testname = "Exp optimal"
     probname = "exp_optimal"

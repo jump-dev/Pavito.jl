@@ -65,7 +65,7 @@ end
 
 #=========================================================
  MathProgBase functions
- =========================================================#
+=========================================================#
 
 MathProgBase.setwarmstart!(m::PavitoNonlinearModel, x) = (m.solution = x)
 MathProgBase.setvartype!(m::PavitoNonlinearModel, v::Vector{Symbol}) = (m.vartype = v)

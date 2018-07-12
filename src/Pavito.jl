@@ -5,8 +5,8 @@
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #=========================================================
-This package contains the mixed-integer convex programming (MICP) solver Pavito
-See readme for details
+ This package contains the mixed-integer convex programming (MICP) solver Pavito
+ See readme for details
 =========================================================#
 
 __precompile__()

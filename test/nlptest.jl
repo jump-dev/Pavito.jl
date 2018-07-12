@@ -4,7 +4,11 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# Take a JuMP model and solve, redirecting output
+#=========================================================
+ NLP model unit tests
+=========================================================#
+
+# take a JuMP model and solve, redirecting output
 function solve_jump(testname, m, redirect)
     flush(STDOUT)
     flush(STDERR)
@@ -50,7 +54,7 @@ function solve_jump(testname, m, redirect)
     return status
 end
 
-
+# quadratic program tests
 function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
     solver=PavitoSolver(timeout=120., mip_solver_drives=mip_solver_drives, mip_solver=mip_solver, cont_solver=cont_solver, log_level=(redirect ? 0 : 3))
 
@@ -101,7 +105,7 @@ function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
     end
 end
 
-
+# NLP model tests
 function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
     solver=PavitoSolver(timeout=120., mip_solver_drives=mip_solver_drives, mip_solver=mip_solver, cont_solver=cont_solver, log_level=(redirect ? 0 : 3))
 

@@ -4,6 +4,10 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#=========================================================
+ Pavito solver unit tests
+=========================================================#
+
 using JuMP
 import ConicBenchmarkUtilities
 using Pavito
@@ -12,12 +16,12 @@ using Base.Test
 include("nlptest.jl")
 include("conictest.jl")
 
-# Tests absolute tolerance and Pavito printing level
+# test absolute tolerance and Pavito printing level
 TOL = 1e-3
 ll = 3
 redirect = true
 
-# Use JuMP list of available solvers
+# use JuMP list of available solvers
 include(Pkg.dir("JuMP", "test", "solvers.jl"))
 
 # MIP solvers
@@ -48,7 +52,7 @@ if kni
     cont_solvers["Knitro"] = KNITRO.KnitroSolver(objrange=1e16, outlev=0, maxit=100000)
 end
 
-
+# print solvers
 println("\nMILP solvers:")
 for (i, sname) in enumerate(keys(mip_solvers))
     @printf "%2d  %s\n" i sname
@@ -59,6 +63,7 @@ for (i, sname) in enumerate(keys(cont_solvers))
 end
 println()
 
+# run tests
 @testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false, true]
     @testset "MILP solver - $mipname" for (mipname, mip) in mip_solvers
         if msd && !applicable(MathProgBase.setlazycallback!, MathProgBase.ConicModel(mip), x -> x)
