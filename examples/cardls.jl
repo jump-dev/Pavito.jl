@@ -35,7 +35,7 @@ end
 Choose solvers and options
 =========================================================#
 
-mip_solver_drives = false
+mip_solver_drives = true
 rel_gap = 1e-5
 
 
@@ -45,7 +45,6 @@ rel_gap = 1e-5
 using CPLEX
 mip_solver = CplexSolver(
     CPX_PARAM_SCRIND=(mip_solver_drives ? 1 : 0),
-    # CPX_PARAM_SCRIND=1,
     CPX_PARAM_EPINT=1e-8,
     CPX_PARAM_EPRHS=1e-7,
     CPX_PARAM_EPGAP=(mip_solver_drives ? 1e-5 : 1e-9)

@@ -19,7 +19,7 @@ include("conictest.jl")
 # test absolute tolerance and Pavito printing level
 TOL = 1e-3
 ll = 1
-redirect = false
+redirect = true
 
 # use JuMP list of available solvers
 include(Pkg.dir("JuMP", "test", "solvers.jl"))
@@ -30,12 +30,12 @@ tol_feas = 1e-7
 tol_gap = 0.0
 
 mip_solvers = Dict{String,MathProgBase.AbstractMathProgSolver}()
-# if glp
-#     mip_solvers["GLPK"] = GLPKMathProgInterface.GLPKSolverMIP(msg_lev=GLPK.MSG_OFF, tol_int=tol_int, tol_bnd=tol_feas, mip_gap=tol_gap)
-# end
-# if cpx
-#     mip_solvers["CPLEX"] = CPLEX.CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_EPINT=tol_int, CPX_PARAM_EPRHS=tol_feas, CPX_PARAM_EPGAP=tol_gap)
-# end
+if glp
+    mip_solvers["GLPK"] = GLPKMathProgInterface.GLPKSolverMIP(msg_lev=GLPK.MSG_OFF, tol_int=tol_int, tol_bnd=tol_feas, mip_gap=tol_gap)
+end
+if cpx
+    mip_solvers["CPLEX"] = CPLEX.CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_EPINT=tol_int, CPX_PARAM_EPRHS=tol_feas, CPX_PARAM_EPGAP=tol_gap)
+end
 if grb
     mip_solvers["Gurobi"] = Gurobi.GurobiSolver(OutputFlag=0, IntFeasTol=tol_int, FeasibilityTol=tol_feas, MIPGap=tol_gap)
 end

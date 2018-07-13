@@ -31,6 +31,7 @@ type PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
     constrtype::Vector{Symbol}
     constrlinear::Vector{Bool}
     objsense::Symbol
+    fixsense::Float64
     objlinear::Bool
     d
 
@@ -38,11 +39,13 @@ type PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
     mip_x::Vector{JuMP.Variable}
     status::Symbol
     incumbent::Vector{Float64}
+    oa_started::Bool
+    new_incumb::Bool
     totaltime::Float64
     objval::Float64
     objbound::Float64
     objgap::Float64
-    iterations::Int
+    iterscbs::Int
 
     function PavitoNonlinearModel(log_level, timeout, rel_gap, mip_solver_drives, mip_solver, cont_solver)
         m = new()
@@ -56,11 +59,13 @@ type PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
 
         m.status = :NotLoaded
         m.incumbent = Float64[]
+        m.oa_started = false
+        m.new_incumb = false
         m.totaltime = 0.0
         m.objval = Inf
         m.objbound = -Inf
         m.objgap = Inf
-        m.iterations = 0
+        m.iterscbs = 0
 
         return m
     end
@@ -84,6 +89,7 @@ function MathProgBase.loadproblem!(m::PavitoNonlinearModel, numvar, numconstr, l
     m.l = l
     m.u = u
     m.objsense = sense
+    m.fixsense = (sense == :Max) ? -1 : 1
     m.d = d
     m.vartypes = fill(:Cont, numvar)
 
@@ -100,7 +106,7 @@ function MathProgBase.loadproblem!(m::PavitoNonlinearModel, numvar, numconstr, l
         end
     end
 
-    m.incumbent = fill(NaN, m.numvar)
+    m.incumbent = fill(NaN, numvar)
     m.status = :Loaded
 
     return nothing
@@ -110,7 +116,6 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
     start = time()
     nlptime = 0.0
     miptime = 0.0
-    fixsense = (m.objsense == :Max) ? -1 : 1
     if any(isnan, m.incumbent)
         m.incumbent = zeros(m.numvar)
     end
@@ -122,7 +127,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
     int_ind = filter(i -> (m.vartypes[i] in (:Int, :Bin)), 1:m.numvar)
 
     if m.log_level > 0
-        println("\nPavito started...\n")
+        println("\nPavito started...")
         println("MINLP has $(m.numvar) variables, $(m.numconstr - m.numnlconstr) linear constraints, $(m.numnlconstr) nonlinear constraints")
     end
     flush(STDOUT)
@@ -170,24 +175,55 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         end
     end
 
+    # set remaining time limit on MIP solver
+    if isfinite(m.timeout) && applicable(MathProgBase.setparameters!, m.mip_solver)
+        MathProgBase.setparameters!(m.mip_solver, TimeLimit=max(1., m.timeout - (time() - start)))
+    end
+    setsolver(mipmodel, m.mip_solver)
+
     # start main OA algorithm
     flush(STDOUT)
+    m.oa_started = true
+
     if m.mip_solver_drives
         # MIP-solver-driven method
+        cache_contsol = Dict{Vector{Float64},Vector{Float64}}()
+
         function lazycallback(cb)
-            m.cb = cb
+            m.iterscbs += 1
 
+            # if integer assignment has been seen before, use cached point
+            mipsolution = getvalue(m.mip_x)
+            round_mipsol = round.(mipsolution)
+            if haskey(cache_contsol, round_mipsol)
+                # retrieve existing solution
+                contsolution = cache_contsol[round_mipsol]
+            else
+                # try to solve new subproblem, update incumbent solution if feasible
+                start_nlp = time()
+                contsolution = solvesubproblem(m, mipsolution)
+                nlptime += time() - start_nlp
+                cache_contsol[round_mipsol] = contsolution
+            end
 
-
+            # add gradient cuts to MIP model from NLP solution
+            if all(isfinite, contsolution)
+                m.cb = cb
+                addcuts(m, mipmodel, contsolution, jac_I, jac_J, jac_V, grad_f)
+            else
+                warn("no cuts could be added, terminating Pavito")
+                return JuMP.StopTheSolver
+            end
         end
         addlazycallback(mipmodel, lazycallback)
 
         function heuristiccallback(cb)
-            if nlp_status == :Optimal
+            if m.new_incumb
                 for i in 1:m.numvar
-                    setsolutionvalue(cb, m.mip_x[i], nlp_solution[i])
+                    setsolutionvalue(cb, m.mip_x[i], m.incumbent[i])
                 end
                 addsolution(cb)
+                m.new_incumb = false
 
 
                 println("solution added")
@@ -203,11 +239,12 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         # iterative method
         prev_mipsolution = fill(NaN, m.numvar)
         while (time() - start) < m.timeout
+            m.iterscbs += 1
+
             # solve MIP model
             start_mip = time()
             mip_status = solve(mipmodel, suppress_warnings=true)
             miptime += time() - start_mip
-            m.iterations += 1
 
             # finish if MIP was infeasible or if problematic status
             if (mip_status == :Infeasible) || (mip_status == :InfeasibleOrUnbounded)
@@ -230,7 +267,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
             if isfinite(m.objval) && isfinite(m.objbound)
                 m.objgap = (m.objval - m.objbound)/(abs(m.objval) + 1e-5)
             end
-            printgap(m, start, fixsense)
+            printgap(m, start)
 
             # finish if optimal or cycling integer solutions
             if m.objgap <= m.rel_gap
@@ -248,7 +285,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
 
             # try to solve new subproblem, update incumbent solution if feasible
             start_nlp = time()
-            contsolution = solvesubproblem(m, mipsolution, fixsense)
+            contsolution = solvesubproblem(m, mipsolution)
             nlptime += time() - start_nlp
 
             # update gap if best bound and best objective are finite
@@ -283,6 +320,13 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
                     MathProgBase.setwarmstart!(internalmodel(mipmodel), [m.incumbent; m.objval])
                 end
             end
+
+            # set remaining time limit on MIP solver
+            if isfinite(m.timeout) && applicable(MathProgBase.setparameters!, m.mip_solver)
+                MathProgBase.setparameters!(m.mip_solver, TimeLimit=max(1., m.timeout - (time() - start)))
+            end
+            setsolver(mipmodel, m.mip_solver)
+
             prev_mipsolution = mipsolution
             flush(STDOUT)
         end
@@ -292,25 +336,28 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
     # finish
     m.totaltime = time() - start
     if m.log_level > 0
-        println("\nPavito finished...\n")
-        @printf "status            = %13s.\n" m.status
-        @printf "objective value   = %13.5f.\n" fixsense*m.objval
-        @printf "objective bound   = %13.5f.\n" fixsense*m.objbound
+        println("\nPavito finished...")
+        @printf "status            = %13s\n" m.status
+        @printf "objective value   = %13.5f\n" m.fixsense*m.objval
+        @printf "objective bound   = %13.5f\n" m.fixsense*m.objbound
         if !m.mip_solver_drives
-            @printf "iterations        = %13d.\n" m.iterations
+            @printf "iterations        = %13d\n" m.iterscbs
+        else
+            @printf "callbacks         = %13d\n" m.iterscbs
         end
-        @printf "total time        = %13.5f sec.\n" m.totaltime
-        @printf "MIP total time    = %13.5f sec.\n" miptime
-        @printf "NLP total time    = %13.5f sec.\n" nlptime
+        @printf "total time        = %13.5f sec\n" m.totaltime
+        @printf "MIP total time    = %13.5f sec\n" miptime
+        @printf "NLP total time    = %13.5f sec\n" nlptime
     end
     flush(STDOUT)
+
     return nothing
 end
 
 MathProgBase.status(m::PavitoNonlinearModel) = m.status
-MathProgBase.getobjval(m::PavitoNonlinearModel) = m.objval
-MathProgBase.getobjbound(m::PavitoNonlinearModel) = m.objbound
-MathProgBase.getobjgap(m::PavitoNonlinearModel) = m.objgap
+MathProgBase.getobjval(m::PavitoNonlinearModel) = m.fixsense*m.objval
+MathProgBase.getobjbound(m::PavitoNonlinearModel) = m.fixsense*m.objbound
+MathProgBase.getobjgap(m::PavitoNonlinearModel) = m.fixsense*m.objgap
 MathProgBase.getsolution(m::PavitoNonlinearModel) = m.incumbent
 MathProgBase.getsolvetime(m::PavitoNonlinearModel) = m.totaltime
 
@@ -470,7 +517,7 @@ function constructlinearcons(m::PavitoNonlinearModel)
 end
 
 # solve NLP subproblem defined by integer assignment
-function solvesubproblem(m, mipsolution, fixsense)
+function solvesubproblem(m::PavitoNonlinearModel, mipsolution)
     new_u = m.u
     new_l = m.l
     for i in 1:m.numvar
@@ -485,11 +532,12 @@ function solvesubproblem(m, mipsolution, fixsense)
 
     if MathProgBase.status(nlpmodel) == :Optimal
         # subproblem is feasible, check if solution is new incumbent
-        nlp_objval = fixsense*MathProgBase.getobjval(nlpmodel)
+        nlp_objval = m.fixsense*MathProgBase.getobjval(nlpmodel)
         nlp_solution = MathProgBase.getsolution(nlpmodel)
         if nlp_objval < m.objval
             m.objval = nlp_objval
             m.incumbent = nlp_solution[1:m.numvar]
+            m.new_incumb = true
         end
 
         return nlp_solution
@@ -569,13 +617,13 @@ function addcuts(m::PavitoNonlinearModel, mipmodel, contsolution, jac_I, jac_J, 
             end
 
             if m.constrtype[i] == :(<=)
-                if m.mip_solver_drives
+                if m.mip_solver_drives && m.oa_started
                     @lazyconstraint(m.cb, dot(coef_new[i], m.mip_x[varidx_new[i]]) <= new_rhs)
                 else
                     @constraint(mipmodel, dot(coef_new[i], m.mip_x[varidx_new[i]]) <= new_rhs)
                 end
             else
-                if m.mip_solver_drives
+                if m.mip_solver_drives && m.oa_started
                     @lazyconstraint(m.cb, dot(coef_new[i], m.mip_x[varidx_new[i]]) >= new_rhs)
                 else
                     @constraint(mipmodel, dot(coef_new[i], m.mip_x[varidx_new[i]]) >= new_rhs)
@@ -601,7 +649,7 @@ function addcuts(m::PavitoNonlinearModel, mipmodel, contsolution, jac_I, jac_J, 
         varidx[m.numvar+1] = m.numvar + 1
         grad_f[m.numvar+1] = -1.0
 
-        if m.mip_solver_drives
+        if m.mip_solver_drives && m.oa_started
             @lazyconstraint(m.cb, dot(grad_f, m.mip_x[varidx]) <= new_rhs)
         else
             @constraint(mipmodel, dot(grad_f, m.mip_x[varidx]) <= new_rhs)
@@ -665,15 +713,15 @@ function checkinfeas(m::PavitoNonlinearModel, solution)
 end
 
 # print objective gap information for iterative
-function printgap(m, start, fixsense)
+function printgap(m::PavitoNonlinearModel, start)
     if m.log_level >= 1
-        if (m.iterations == 1) || (m.log_level >= 2)
+        if (m.iterscbs == 1) || (m.log_level >= 2)
             @printf "\n%-5s | %-14s | %-14s | %-11s | %-11s\n" "Iter." "Best feasible" "Best bound" "Rel. gap" "Time (s)"
         end
         if m.objgap < 1000
-            @printf "%5d | %+14.6e | %+14.6e | %11.3e | %11.3e\n" m.iterations fixsense*m.objval fixsense*m.objbound fixsense*m.objgap (time() - start)
+            @printf "%5d | %+14.6e | %+14.6e | %11.3e | %11.3e\n" m.iterscbs m.fixsense*m.objval m.fixsense*m.objbound m.fixsense*m.objgap (time() - start)
         else
-            @printf "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n" m.iterations fixsense*m.objval fixsense*m.objbound (isnan(m.objgap) ? "Inf" : ">1000") (time() - start)
+            @printf "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n" m.iterscbs m.fixsense*m.objval m.fixsense*m.objbound (isnan(m.objgap) ? "Inf" : ">1000") (time() - start)
         end
         flush(STDOUT)
         flush(STDERR)
