@@ -18,7 +18,7 @@ include("conictest.jl")
 
 # test absolute tolerance and Pavito printing level
 TOL = 1e-3
-ll = 1
+ll = 2
 redirect = true
 
 # use JuMP list of available solvers

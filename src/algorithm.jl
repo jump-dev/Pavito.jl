@@ -127,8 +127,8 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
     int_ind = filter(i -> (m.vartypes[i] in (:Int, :Bin)), 1:m.numvar)
 
     if m.log_level > 0
+        println("\nMINLP has a ", (m.objlinear ? "linear" : "nonlinear"), " objective, $(m.numvar) variables ($(length(int_ind)) integer), $(m.numconstr) constraints ($(m.numnlconstr) nonlinear)")
         println("\nPavito started...")
-        println("MINLP has $(m.numvar) variables, $(m.numconstr - m.numnlconstr) linear constraints, $(m.numnlconstr) nonlinear constraints")
     end
     flush(STDOUT)
 
@@ -218,17 +218,13 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         addlazycallback(mipmodel, lazycallback)
 
         function heuristiccallback(cb)
+            # if have a new best feasible solution since last heuristic solution added, set MIP solution to the new best feasible solution
             if m.new_incumb
                 for i in 1:m.numvar
                     setsolutionvalue(cb, m.mip_x[i], m.incumbent[i])
                 end
                 addsolution(cb)
                 m.new_incumb = false
-
-
-                println("solution added")
-
-
             end
         end
         addheuristiccallback(mipmodel, heuristiccallback)
@@ -336,18 +332,20 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
     # finish
     m.totaltime = time() - start
     if m.log_level > 0
-        println("\nPavito finished...")
-        @printf "status            = %13s\n" m.status
-        @printf "objective value   = %13.5f\n" m.fixsense*m.objval
-        @printf "objective bound   = %13.5f\n" m.fixsense*m.objbound
+        println("\nPavito finished...\n")
+        @printf "Status           %13s\n" m.status
+        @printf "Objective value  %13.5f\n" m.fixsense*m.objval
+        @printf "Objective bound  %13.5f\n" m.fixsense*m.objbound
+        @printf "Objective gap    %13.5f\n" m.fixsense*m.objgap
         if !m.mip_solver_drives
-            @printf "iterations        = %13d\n" m.iterscbs
+            @printf "Iterations       %13d\n" m.iterscbs
         else
-            @printf "callbacks         = %13d\n" m.iterscbs
+            @printf "Callbacks        %13d\n" m.iterscbs
         end
-        @printf "total time        = %13.5f sec\n" m.totaltime
-        @printf "MIP total time    = %13.5f sec\n" miptime
-        @printf "NLP total time    = %13.5f sec\n" nlptime
+        @printf "Total time       %13.5f sec\n" m.totaltime
+        @printf "MIP total time   %13.5f sec\n" miptime
+        @printf "NLP total time   %13.5f sec\n" nlptime
+        println()
     end
     flush(STDOUT)
 
@@ -475,14 +473,8 @@ function constructlinearcons(m::PavitoNonlinearModel)
     m.objlinear = MathProgBase.isobjlinear(m.d)
 
     if m.objlinear
-        if m.log_level > 0
-            println("objective function is linear")
-        end
         m.c = c
     else
-        if m.log_level > 0
-            println("objective function is nonlinear")
-        end
         m.c = zeros(m.numvar)
     end
 

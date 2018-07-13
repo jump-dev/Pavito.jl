@@ -51,7 +51,7 @@ end
 Choose solvers and options
 =========================================================#
 
-mip_solver_drives = true
+mip_solver_drives = false
 rel_gap = 1e-5
 
 
@@ -72,7 +72,7 @@ cont_solver = IpoptSolver(print_level=0)
 
 solver = PavitoSolver(
     mip_solver_drives=mip_solver_drives,
-    log_level=0,
+    log_level=2,
     rel_gap=rel_gap,
 	mip_solver=mip_solver,
 	cont_solver=cont_solver,
