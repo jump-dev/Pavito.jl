@@ -27,7 +27,7 @@ function miqp_cardls(m, d, A, b, k, rho, xB, solver)
     @constraint(mod, sum(z) <= k)
 
     solve(mod)
-    println("  selected features (z) = \n$(getvalue(z))\n")
+    println("Selected features (z) = \n$(getvalue(z))\n")
 end
 
 
