@@ -27,7 +27,7 @@ function miqp_cardls(m, d, A, b, k, rho, xB, solver)
     @constraint(mod, sum(z) <= k)
 
     solve(mod)
-    println("  selected features (z) = \n$(getvalue(z))\n")
+    println("Selected features (z) = \n$(getvalue(z))\n")
 end
 
 
@@ -45,7 +45,6 @@ rel_gap = 1e-5
 using CPLEX
 mip_solver = CplexSolver(
     CPX_PARAM_SCRIND=(mip_solver_drives ? 1 : 0),
-    # CPX_PARAM_SCRIND=1,
     CPX_PARAM_EPINT=1e-8,
     CPX_PARAM_EPRHS=1e-7,
     CPX_PARAM_EPGAP=(mip_solver_drives ? 1e-5 : 1e-9)
@@ -57,7 +56,7 @@ cont_solver = IpoptSolver(print_level=0)
 
 solver = PavitoSolver(
     mip_solver_drives=mip_solver_drives,
-    log_level=0,
+    log_level=1,
     rel_gap=rel_gap,
 	mip_solver=mip_solver,
 	cont_solver=cont_solver,
