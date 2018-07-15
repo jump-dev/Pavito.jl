@@ -128,7 +128,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
 
     if m.log_level > 0
         println("\nMINLP has a ", (m.objlinear ? "linear" : "nonlinear"), " objective, $(m.numvar) variables ($(length(int_ind)) integer), $(m.numconstr) constraints ($(m.numnlconstr) nonlinear)")
-        println("\nPavito started...")
+        println("\nPavito started, using ", (m.mip_solver_drives ? "MIP-solver-driven" : "iterative"), " method...")
     end
     flush(STDOUT)
 

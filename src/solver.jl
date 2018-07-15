@@ -27,7 +27,7 @@ function PavitoSolver(;
     log_level = 1,
     timeout = Inf,
     rel_gap = 1e-5,
-    mip_solver_drives = false,
+    mip_solver_drives = nothing,
     mip_solver = UnsetSolver(),
     cont_solver = UnsetSolver(),
     )
@@ -35,6 +35,12 @@ function PavitoSolver(;
     if mip_solver == UnsetSolver()
         error("No MILP solver specified (set mip_solver)\n")
     end
+    if mip_solver_drives == nothing
+        mip_solver_drives = applicable(MathProgBase.setlazycallback!, MathProgBase.ConicModel(mip_solver), x -> x)
+    elseif mip_solver_drives && !applicable(MathProgBase.setlazycallback!, MathProgBase.ConicModel(mip_solver), x -> x)
+        error("MIP solver does not support callbacks (cannot set mip_solver_drives = true)")
+    end
+
     if cont_solver == UnsetSolver()
         error("No continuous NLP solver specified (set cont_solver)\n")
     end
