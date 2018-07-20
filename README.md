@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/JuliaOpt/Pavito.jl.svg?branch=master)](https://travis-ci.org/JuliaOpt/Pavito.jl) [![codecov.io](https://codecov.io/github/JuliaOpt/Pavito.jl/coverage.svg?branch=master)](https://codecov.io/github/JuliaOpt/Pavito.jl?branch=master) [![Pavito](http://pkg.julialang.org/badges/Pavito_0.0.svg)](http://pkg.julialang.org/?pkg=Pavito&ver=0.0)
+[![Build Status](https://travis-ci.org/JuliaOpt/Pavito.jl.svg?branch=master)](https://travis-ci.org/JuliaOpt/Pavito.jl) [![codecov](https://codecov.io/gh/JuliaOpt/Pavito.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaOpt/Pavito.jl)
 
 # Pavito
 
