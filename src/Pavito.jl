@@ -18,6 +18,7 @@ module Pavito
 
     using Compat.Printf
     using Compat.SparseArrays
+    using Compat.LinearAlgebra
 
     import Compat: undef
     import Compat: @warn
