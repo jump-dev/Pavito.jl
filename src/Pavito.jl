@@ -21,6 +21,8 @@ module Pavito
 
     import Compat: undef
     import Compat: @warn
+    import Compat: stdout
+    import Compat: stderr
 
     include("solver.jl")
     include("algorithm.jl")

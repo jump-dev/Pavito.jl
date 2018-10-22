@@ -58,7 +58,8 @@ function solve_cbf(testname, probname, solver, redirect)
         objbound = MathProgBase.getobjbound(m)
     end
     sol = MathProgBase.getsolution(m)
-    @printf ":%-16s %5.2f s\n" status (time_ns() - start_time)/1e-9
+    rt_time = ((time_ns() - start_time)*1e-9)
+    @printf ":%-16s %5.2f s\n" status rt_time
     flush(stdout)
     flush(stderr)
 

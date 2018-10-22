@@ -42,10 +42,11 @@ function solve_jump(testname, m, redirect)
     flush(stdout)
     flush(stderr)
 
+    rt_time = ((time_ns() - start_time)*1e-9)
     if isa(status, ErrorException)
-        @printf ":%-16s %5.2f s\n" "ErrorException" (time_ns() - start_time)/1e-9
+        @printf ":%-16s %5.2f s\n" "ErrorException" rt_time
     else
-        @printf ":%-16s %5.2f s\n" status (time_ns() - start_time)/1e-9
+        @printf ":%-16s %5.2f s\n" status rt_time
     end
 
     flush(stdout)

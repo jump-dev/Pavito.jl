@@ -21,7 +21,6 @@ using Compat.Printf
 import Compat: stdout
 import Compat: stderr
 
-
 if VERSION < v"0.7.0-"
     jump_path = Pkg.dir("JuMP")
 end
