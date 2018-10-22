@@ -11,7 +11,25 @@
 using JuMP
 import ConicBenchmarkUtilities
 using Pavito
-using Base.Test
+using MathProgBase
+
+import GLPK
+
+using Compat.Test
+using Compat.Printf
+
+import Compat: stdout
+import Compat: stderr
+
+
+if VERSION < v"0.7.0-"
+    jump_path = Pkg.dir("JuMP")
+end
+
+if VERSION > v"0.7.0-"
+    jump_path = joinpath(dirname(pathof(JuMP)), "..")
+end
+
 
 include("nlptest.jl")
 include("conictest.jl")
@@ -22,7 +40,8 @@ ll = 2
 redirect = true
 
 # use JuMP list of available solvers
-include(Pkg.dir("JuMP", "test", "solvers.jl"))
+include(joinpath(jump_path, "test", "solvers.jl"))
+
 
 # MIP solvers
 tol_int = 1e-9
@@ -80,8 +99,8 @@ println()
             run_soc(msd, mip, con, ll, redirect)
             run_expsoc(msd, mip, con, ll, redirect)
         end
-        flush(STDOUT)
-        flush(STDERR)
+        flush(stdout)
+        flush(stderr)
     end
     println()
 end
