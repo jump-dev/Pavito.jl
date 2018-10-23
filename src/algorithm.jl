@@ -254,7 +254,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
             mipsolution = getvalue(m.mip_x)
 
             # update best bound from MIP bound
-            mipobjbound = MathProgBase.getobjbound(mipmodel)
+            mipobjbound = getobjbound(mipmodel)
             if isfinite(mipobjbound) && (mipobjbound > m.objbound)
                 m.objbound = mipobjbound
             end
@@ -385,8 +385,8 @@ MathProgBase.obj_expr(d::InfeasibleNLPEvaluator) = MathProgBase.obj_expr(d.d)
 MathProgBase.constr_expr(d::InfeasibleNLPEvaluator, i::Int) = MathProgBase.constr_expr(d.d, i)
 
 function MathProgBase.eval_grad_f(d::InfeasibleNLPEvaluator, g, x)
-    g[1:d.numvar] = 0.0
-    g[1+d.numnlconstr:end] = 1.0
+    g[1:d.numvar] .= 0.0
+    g[1+d.numnlconstr:end] .= 1.0
     return nothing
 end
 
