@@ -13,8 +13,6 @@ import ConicBenchmarkUtilities
 using Pavito
 using MathProgBase
 
-import GLPK
-
 using Compat.Test
 using Compat.Printf
 
@@ -49,7 +47,7 @@ tol_gap = 0.0
 
 mip_solvers = Dict{String,MathProgBase.AbstractMathProgSolver}()
 if glp
-    mip_solvers["GLPK"] = GLPKMathProgInterface.GLPKSolverMIP(msg_lev=GLPK.MSG_OFF, tol_int=tol_int, tol_bnd=tol_feas, mip_gap=tol_gap)
+    mip_solvers["GLPK"] = GLPKMathProgInterface.GLPKSolverMIP(msg_lev=0, tol_int=tol_int, tol_bnd=tol_feas, mip_gap=tol_gap)
 end
 if cpx
     mip_solvers["CPLEX"] = CPLEX.CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_EPINT=tol_int, CPX_PARAM_EPRHS=tol_feas, CPX_PARAM_EPGAP=tol_gap)
