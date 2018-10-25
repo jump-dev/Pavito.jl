@@ -11,7 +11,7 @@
 export PavitoSolver
 
 # Dummy solver
-mutable struct UnsetSolver <: MathProgBase.AbstractMathProgSolver end
+struct UnsetSolver <: MathProgBase.AbstractMathProgSolver end
 
 # Pavito solver
 mutable struct PavitoSolver <: MathProgBase.AbstractMathProgSolver
