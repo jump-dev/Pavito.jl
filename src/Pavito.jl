@@ -16,6 +16,15 @@ module Pavito
     using JuMP
     using ConicNonlinearBridge
 
+    using Compat.Printf
+    using Compat.SparseArrays
+    using Compat.LinearAlgebra
+
+    import Compat: undef
+    import Compat: @warn
+    import Compat: stdout
+    import Compat: stderr
+
     include("solver.jl")
     include("algorithm.jl")
 end

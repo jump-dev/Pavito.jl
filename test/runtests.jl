@@ -11,7 +11,22 @@
 using JuMP
 import ConicBenchmarkUtilities
 using Pavito
-using Base.Test
+using MathProgBase
+
+using Compat.Test
+using Compat.Printf
+
+import Compat: stdout
+import Compat: stderr
+
+if VERSION < v"0.7.0-"
+    jump_path = Pkg.dir("JuMP")
+end
+
+if VERSION > v"0.7.0-"
+    jump_path = joinpath(dirname(pathof(JuMP)), "..")
+end
+
 
 include("nlptest.jl")
 include("conictest.jl")
@@ -22,7 +37,8 @@ ll = 2
 redirect = true
 
 # use JuMP list of available solvers
-include(Pkg.dir("JuMP", "test", "solvers.jl"))
+include(joinpath(jump_path, "test", "solvers.jl"))
+
 
 # MIP solvers
 tol_int = 1e-9
@@ -31,7 +47,7 @@ tol_gap = 0.0
 
 mip_solvers = Dict{String,MathProgBase.AbstractMathProgSolver}()
 if glp
-    mip_solvers["GLPK"] = GLPKMathProgInterface.GLPKSolverMIP(msg_lev=GLPK.MSG_OFF, tol_int=tol_int, tol_bnd=tol_feas, mip_gap=tol_gap)
+    mip_solvers["GLPK"] = GLPKMathProgInterface.GLPKSolverMIP(msg_lev=0, tol_int=tol_int, tol_bnd=tol_feas, mip_gap=tol_gap)
 end
 if cpx
     mip_solvers["CPLEX"] = CPLEX.CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_EPINT=tol_int, CPX_PARAM_EPRHS=tol_feas, CPX_PARAM_EPGAP=tol_gap)
@@ -80,8 +96,8 @@ println()
             run_soc(msd, mip, con, ll, redirect)
             run_expsoc(msd, mip, con, ll, redirect)
         end
-        flush(STDOUT)
-        flush(STDERR)
+        flush(stdout)
+        flush(stderr)
     end
     println()
 end

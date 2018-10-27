@@ -8,7 +8,7 @@
  Nonlinear model object
 =========================================================#
 
-type PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
+mutable struct PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
     log_level::Int              # Verbosity flag: 0 for quiet, higher for basic solve info
     timeout::Float64            # Time limit for algorithm (in seconds)
     rel_gap::Float64            # Relative optimality gap termination condition
@@ -95,7 +95,7 @@ function MathProgBase.loadproblem!(m::PavitoNonlinearModel, numvar, numconstr, l
 
     MathProgBase.initialize(d, [:Grad, :Jac, :Hess])
 
-    m.constrtype = Array{Symbol}(numconstr)
+    m.constrtype = Array{Symbol}(undef, numconstr)
     for i in 1:numconstr
         if (lb[i] > -Inf) && (ub[i] < Inf)
             m.constrtype[i] = :(==)
@@ -130,7 +130,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         println("\nMINLP has a ", (m.objlinear ? "linear" : "nonlinear"), " objective, $(m.numvar) variables ($(length(int_ind)) integer), $(m.numconstr) constraints ($(m.numnlconstr) nonlinear)")
         println("\nPavito started, using ", (m.mip_solver_drives ? "MIP-solver-driven" : "iterative"), " method...")
     end
-    flush(STDOUT)
+    flush(stdout)
 
     # solve initial continuous relaxation NLP model
     (jac_I, jac_J) = MathProgBase.jac_structure(m.d)
@@ -148,20 +148,20 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         addcuts(m, mipmodel, contsolution, jac_I, jac_J, jac_V, grad_f)
     else
         if ini_nlp_status == :Infeasible
-            warn("initial NLP relaxation infeasible")
+            @warn "initial NLP relaxation infeasible"
             m.status = :Infeasible
         elseif ini_nlp_status == :Unbounded
-            warn("initial NLP relaxation unbounded")
+            @warn "initial NLP relaxation unbounded"
             m.status = :Unbounded
         else
-            warn("NLP solver failure")
+            @warn "NLP solver failure"
             m.status = :Error
         end
         return nothing
     end
     ini_nlp_objval = MathProgBase.getobjval(ini_nlpmodel)
     m.status = :SolvedRelax
-    flush(STDOUT)
+    flush(stdout)
 
     # if have warmstart, use objval and warmstart MIP model
     if !isempty(m.incumbent) && all(isfinite, m.incumbent) && (checkinfeas(m, m.incumbent) < 1e-5)
@@ -182,7 +182,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
     setsolver(mipmodel, m.mip_solver)
 
     # start main OA algorithm
-    flush(STDOUT)
+    flush(stdout)
     m.oa_started = true
 
     if m.mip_solver_drives
@@ -211,7 +211,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
                 m.cb = cb
                 addcuts(m, mipmodel, contsolution, jac_I, jac_J, jac_V, grad_f)
             else
-                warn("no cuts could be added, terminating Pavito")
+                @warn "no cuts could be added, terminating Pavito"
                 return JuMP.StopTheSolver
             end
         end
@@ -247,14 +247,14 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
                 m.status = :Infeasible
                 break
             elseif (mip_status != :Optimal) && (mip_status != :Suboptimal)
-                warn("MIP solver status was $mip_status, terminating Pavito")
+                @warn "MIP solver status was $mip_status, terminating Pavito"
                 m.status = mip_status
                 break
             end
             mipsolution = getvalue(m.mip_x)
 
             # update best bound from MIP bound
-            mipobjbound = MathProgBase.getobjbound(mipmodel)
+            mipobjbound = getobjbound(mipmodel)
             if isfinite(mipobjbound) && (mipobjbound > m.objbound)
                 m.objbound = mipobjbound
             end
@@ -270,7 +270,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
                 m.status = :Optimal
                 break
             elseif round.(prev_mipsolution[int_ind]) == round.(mipsolution[int_ind])
-                warn("mixed-integer cycling detected, terminating Pavito")
+                @warn "mixed-integer cycling detected, terminating Pavito"
                 if isfinite(m.objgap)
                     m.status = :Suboptimal
                 else
@@ -292,7 +292,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
                 m.status = :Optimal
                 break
             elseif round.(prev_mipsolution[int_ind]) == round.(mipsolution[int_ind])
-                warn("mixed-integer cycling detected, terminating Pavito")
+                @warn "mixed-integer cycling detected, terminating Pavito"
                 if isfinite(m.objgap)
                     m.status = :Suboptimal
                 else
@@ -305,7 +305,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
             if all(isfinite, contsolution)
                 addcuts(m, mipmodel, contsolution, jac_I, jac_J, jac_V, grad_f)
             else
-                warn("no cuts could be added, terminating Pavito")
+                @warn "no cuts could be added, terminating Pavito"
                 break
             end
 
@@ -324,10 +324,10 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
             setsolver(mipmodel, m.mip_solver)
 
             prev_mipsolution = mipsolution
-            flush(STDOUT)
+            flush(stdout)
         end
     end
-    flush(STDOUT)
+    flush(stdout)
 
     # finish
     m.totaltime = time() - start
@@ -347,7 +347,7 @@ function MathProgBase.optimize!(m::PavitoNonlinearModel)
         @printf "NLP total time   %13.5f sec\n" nlptime
         println()
     end
-    flush(STDOUT)
+    flush(stdout)
 
     return nothing
 end
@@ -364,7 +364,7 @@ MathProgBase.getsolvetime(m::PavitoNonlinearModel) = m.totaltime
  NLP utilities
 =========================================================#
 
-type InfeasibleNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
+mutable struct InfeasibleNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     d
     numconstr::Int
     numnlconstr::Int
@@ -385,8 +385,8 @@ MathProgBase.obj_expr(d::InfeasibleNLPEvaluator) = MathProgBase.obj_expr(d.d)
 MathProgBase.constr_expr(d::InfeasibleNLPEvaluator, i::Int) = MathProgBase.constr_expr(d.d, i)
 
 function MathProgBase.eval_grad_f(d::InfeasibleNLPEvaluator, g, x)
-    g[1:d.numvar] = 0.0
-    g[1+d.numnlconstr:end] = 1.0
+    g[1:d.numvar] .= 0.0
+    g[1+d.numnlconstr:end] .= 1.0
     return nothing
 end
 
@@ -570,7 +570,7 @@ function solvesubproblem(m::PavitoNonlinearModel, mipsolution)
     MathProgBase.optimize!(infnlpmodel)
     infnlpmodel_status = MathProgBase.status(infnlpmodel)
     if (infnlpmodel_status != :Optimal) && (infnlpmodel_status != :Suboptimal)
-        warn("NLP solver failure")
+        @warn "NLP solver failure"
     end
 
     return MathProgBase.getsolution(infnlpmodel)
@@ -715,8 +715,8 @@ function printgap(m::PavitoNonlinearModel, start)
         else
             @printf "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n" m.iterscbs m.fixsense*m.objval m.fixsense*m.objbound (isnan(m.objgap) ? "Inf" : ">1000") (time() - start)
         end
-        flush(STDOUT)
-        flush(STDERR)
+        flush(stdout)
+        flush(stderr)
     end
     return nothing
 end

@@ -11,10 +11,10 @@
 export PavitoSolver
 
 # Dummy solver
-type UnsetSolver <: MathProgBase.AbstractMathProgSolver end
+struct UnsetSolver <: MathProgBase.AbstractMathProgSolver end
 
 # Pavito solver
-type PavitoSolver <: MathProgBase.AbstractMathProgSolver
+mutable struct PavitoSolver <: MathProgBase.AbstractMathProgSolver
     log_level::Int              # Verbosity flag: 0 for quiet, higher for basic solve info
     timeout::Float64            # Time limit for algorithm (in seconds)
     rel_gap::Float64            # Relative optimality gap termination condition
