@@ -93,7 +93,7 @@ function MathProgBase.loadproblem!(m::PavitoNonlinearModel, numvar, numconstr, l
     m.d = d
     m.vartypes = fill(:Cont, numvar)
 
-    MathProgBase.initialize(d, [:Grad, :Jac, :Hess])
+    d.disable_2ndorder ? MathProgBase.initialize(d, [:Grad, :Jac]) : MathProgBase.initialize(d, [:Grad, :Jac, :Hess])
 
     m.constrtype = Array{Symbol}(undef, numconstr)
     for i in 1:numconstr
@@ -377,7 +377,7 @@ MathProgBase.eval_f(d::InfeasibleNLPEvaluator, x) = sum(x[i] for i in (d.numvar+
 MathProgBase.eval_hesslag(d::InfeasibleNLPEvaluator, H, x, σ, μ) = MathProgBase.eval_hesslag(d.d, H, x[1:d.numvar], 0.0, μ)
 MathProgBase.hesslag_structure(d::InfeasibleNLPEvaluator) = MathProgBase.hesslag_structure(d.d)
 MathProgBase.initialize(d::InfeasibleNLPEvaluator, requested_features::Vector{Symbol}) = MathProgBase.initialize(d.d, requested_features)
-MathProgBase.features_available(d::InfeasibleNLPEvaluator) = [:Grad, :Jac, :Hess]
+MathProgBase.features_available(d::InfeasibleNLPEvaluator)  = d.d.disable_2ndorder ? [:Grad, :Jac] : [:Grad, :Jac, :Hess]
 MathProgBase.isobjlinear(d::InfeasibleNLPEvaluator) = true
 MathProgBase.isobjquadratic(d::InfeasibleNLPEvaluator) = true
 MathProgBase.isconstrlinear(d::InfeasibleNLPEvaluator, i::Int) = MathProgBase.isconstrlinear(d.d, i)
