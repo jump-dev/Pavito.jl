@@ -19,7 +19,7 @@ mutable struct PavitoNonlinearModel <: MathProgBase.AbstractNonlinearModel
     numvar::Int
     numconstr::Int
     numnlconstr::Int
-    A::SparseMatrixCSC{Float64,Int64}
+    A::SparseMatrixCSC{Float64,Int}
     A_lb::Vector{Float64}
     A_ub::Vector{Float64}
     lb::Vector{Float64}
