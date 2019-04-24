@@ -2,9 +2,9 @@
 
 # Pavito
 
-Pavito is a **mixed-integer convex programming** (MICP) solver package written in [Julia](http://julialang.org/). MICP problems are convex except for restrictions that some variables take binary or integer values.
+Pavito is a **mixed-integer nonlinear programming** (MINLP) solver package written in [Julia](http://julialang.org/).
 
-Pavito solves MICP problems by constructing sequential polyhedral outer-approximations of the convex feasible set, similar to [Bonmin](https://projects.coin-or.org/Bonmin). Pavito accesses state-of-the-art MILP solvers and continuous, derivative-based nonlinear programming (NLP) solvers through the MathProgBase interface.
+Pavito accesses state-of-the-art MILP solvers and continuous, derivative-based nonlinear programming (NLP) solvers through the MathProgBase interface.
 
 For algorithms that use a conic solver instead of an NLP solver, use [Pajarito](https://github.com/JuliaOpt/Pajarito.jl). Pajarito is a robust mixed-integer conic solver that can handle such established problem classes as mixed-integer second-order cone programming (MISOCP) and mixed-integer semidefinite programming (MISDP).
 
@@ -17,7 +17,7 @@ julia> Pkg.add("Pavito")
 
 ## Usage
 
-There are several convenient ways to model MICPs in Julia and access Pavito:
+There are several convenient ways to model MINLPs in Julia and access Pavito:
 
 |             | [JuMP][JuMP-url]  | [Convex.jl][convex-url]  | [MathProgBase][mpb-url]  |
 |-------------|-------------------|--------------------------|--------------------------|
