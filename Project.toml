@@ -19,7 +19,7 @@ GLPKMathProgInterface = "≥ 0.4.0"
 Ipopt = "≥ 0.4.0"
 JuMP = "~0.15, ~0.16, ~0.17, ~0.18"
 MathProgBase = "~0.5, ~0.6, ~0.7"
-julia = "~0.6, ~0.7, ~1"
+julia = "1"
 
 [extras]
 GLPKMathProgInterface = "3c7084bd-78ad-589a-b5bb-dbd673274bea"
