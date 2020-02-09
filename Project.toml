@@ -1,6 +1,5 @@
 name = "Pavito"
 uuid = "cd433a01-47d1-575d-afb7-6db927ee8d8f"
-authors = ["Miles Lubin"]
 repo = "https://github.com/JuliaOpt/Pavito.jl.git"
 version = "0.1.3"
 
