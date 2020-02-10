@@ -4,14 +4,15 @@ repo = "https://github.com/JuliaOpt/Pavito.jl.git"
 version = "0.1.3"
 
 [deps]
-Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
 ConicBenchmarkUtilities = "e95a7839-07fb-532d-9a0e-071766bb5168"
 ConicNonlinearBridge = "952205b0-75a0-561c-bf54-4eaf7b36f838"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MathProgBase = "fdba3010-5040-5b88-9595-932c9decdf73"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [compat]
-Compat = "~1.0, ~2.0"
 ConicBenchmarkUtilities = "~0.3"
 ConicNonlinearBridge = "~0.2.1"
 GLPKMathProgInterface = "≥ 0.4.0"
@@ -24,6 +25,7 @@ julia = "1"
 GLPKMathProgInterface = "3c7084bd-78ad-589a-b5bb-dbd673274bea"
 Ipopt = "b6b21f68-93f8-5de0-b562-5493be1d77c9"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["GLPKMathProgInterface", "Ipopt", "Logging"]
+test = ["Test", "GLPKMathProgInterface", "Ipopt", "Logging"]

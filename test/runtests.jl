@@ -13,22 +13,14 @@ import ConicBenchmarkUtilities
 using Pavito
 using MathProgBase
 
-using Compat.Test
-using Compat.Printf
+using Test
+using Printf
 
-import Compat: stdout
-import Compat: stderr
 
-if VERSION < v"0.7.0-"
-    jump_path = Pkg.dir("JuMP")
-end
+using Logging
+disable_logging(Logging.Error)
 
-if VERSION > v"0.7.0-"
-    using Logging
-    disable_logging(Logging.Error)
-
-    jump_path = joinpath(dirname(pathof(JuMP)), "..")
-end
+jump_path = joinpath(dirname(pathof(JuMP)), "..")
 
 
 include("nlptest.jl")
