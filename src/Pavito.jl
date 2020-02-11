@@ -9,21 +9,14 @@
  See readme for details
 =========================================================#
 
-__precompile__()
-
 module Pavito
     import MathProgBase
     using JuMP
     using ConicNonlinearBridge
 
-    using Compat.Printf
-    using Compat.SparseArrays
-    using Compat.LinearAlgebra
-
-    import Compat: undef
-    import Compat: @warn
-    import Compat: stdout
-    import Compat: stderr
+    using Printf
+    using SparseArrays
+    using LinearAlgebra
 
     include("solver.jl")
     include("algorithm.jl")
