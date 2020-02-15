@@ -13,7 +13,7 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [compat]
-ConicBenchmarkUtilities = "~0.3"
+ConicBenchmarkUtilities = "~0.4"
 ConicNonlinearBridge = "~0.2.1"
 GLPKMathProgInterface = "≥ 0.4.0"
 Ipopt = "≥ 0.4.0"
