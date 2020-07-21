@@ -16,14 +16,15 @@ function solve_jump(testname, m, redirect)
     start_time = time()
 
     if redirect
-        mktemp() do path,io
+        mktemp() do path, io
             out = stdout
             err = stderr
             redirect_stdout(io)
             redirect_stderr(io)
 
             status = try
-                solve(m)
+                JuMP.optimize!(m)
+                MOI.get(m, MOI.TerminationStatus())
             catch e
                 e
             end
@@ -33,10 +34,9 @@ function solve_jump(testname, m, redirect)
             redirect_stderr(err)
         end
     else
-        status = try
-            solve(m)
-        catch e
-            e
+        status = begin
+            JuMP.optimize!(m)
+            MOI.get(m, MOI.TerminationStatus())
         end
     end
     flush(stdout)
@@ -56,12 +56,19 @@ function solve_jump(testname, m, redirect)
 end
 
 # quadratic program tests
-function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
-    solver=PavitoSolver(timeout=120., mip_solver_drives=mip_solver_drives, mip_solver=mip_solver, cont_solver=cont_solver, log_level=(redirect ? 0 : 3))
+function run_qp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, redirect)
+    solver = optimizer_with_attributes(
+        Pavito.Optimizer,
+        "timeout" => 120.0,
+        "mip_solver_drives" => mip_solver_drives,
+        "mip_solver" => mip_solver,
+        "cont_solver" => cont_solver,
+        "log_level" => (redirect ? 0 : 3)
+    )
 
     testname = "QP optimal"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, Int)
         @variable(m, y >= 0)
@@ -75,7 +82,7 @@ function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Optimal
+        @test status == MOI.OPTIMAL
         @test isapprox(getobjectivevalue(m), -12.162277, atol=TOL)
         @test isapprox(getobjbound(m), -12.162277, atol=TOL)
         @test isapprox(getvalue(x), 3, atol=TOL)
@@ -84,7 +91,7 @@ function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
 
     testname = "QP maximize"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, Int)
         @variable(m, y >= 0)
@@ -98,7 +105,7 @@ function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Optimal
+        @test status == MOI.OPTIMAL
         @test isapprox(getobjectivevalue(m), 9.5, atol=TOL)
         @test isapprox(getobjbound(m), 9.5, atol=TOL)
         @test isapprox(getvalue(x), 3, atol=TOL)
@@ -107,12 +114,19 @@ function run_qp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
 end
 
 # NLP model tests
-function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect)
-    solver=PavitoSolver(timeout=120., mip_solver_drives=mip_solver_drives, mip_solver=mip_solver, cont_solver=cont_solver, log_level=(redirect ? 0 : 3))
+function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, redirect)
+    solver = optimizer_with_attributes(
+        Pavito.Optimizer,
+        "timeout" => 120.0,
+        "mip_solver_drives" => mip_solver_drives,
+        "mip_solver" => mip_solver,
+        "cont_solver" => cont_solver,
+        "log_level" => (redirect ? 0 : 3)
+    )
 
     testname = "Nonconvex error"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1, Int)
         @variable(m, y >= 0, start = 1)
@@ -129,7 +143,7 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
     testname = "Optimal"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1, Int)
         @variable(m, y >= 0, start = 1)
@@ -143,13 +157,13 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Optimal
+        @test status == MOI.OPTIMAL
         @test isapprox(getvalue(x), 2.0)
     end
 
     testname = "Infeasible 1"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1, Int)
         @variable(m, y >= 0, start = 1)
@@ -167,7 +181,7 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
     testname = "Infeasible 2"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1, Int)
         @variable(m, y >= 0, start = 1)
@@ -186,7 +200,7 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
     testname = "Continuous error"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1)
         @variable(m, y >= 0, start = 1)
@@ -206,7 +220,7 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
     testname = "Maximization"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1, Int)
         @variable(m, y >= 0, start = 1)
@@ -218,13 +232,13 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Optimal
+        @test status == MOI.OPTIMAL
         @test isapprox(getobjectivevalue(m), 9.5, atol=TOL)
     end
 
     testname = "Nonlinear objective"
     @testset "$testname" begin
-        m = Model(solver=solver)
+        m = Model(solver)
 
         @variable(m, x >= 0, start = 1, Int)
         @variable(m, y >= 0, start = 1)
@@ -236,7 +250,7 @@ function run_nlp(mip_solver_drives, mip_solver, cont_solver, log_level, redirect
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Optimal
+        @test status == MOI.OPTIMAL
         @test isapprox(getobjectivevalue(m), -2.0, atol=TOL)
         @test isapprox(getobjbound(m), -2.0, atol=TOL)
     end

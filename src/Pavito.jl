@@ -10,14 +10,11 @@
 =========================================================#
 
 module Pavito
-    import MathProgBase
-    using JuMP
-    using ConicNonlinearBridge
+    import MathOptInterface
+    const MOI = MathOptInterface
 
     using Printf
-    using SparseArrays
-    using LinearAlgebra
 
-    include("solver.jl")
+    include("MOI_wrapper.jl")
     include("algorithm.jl")
 end
