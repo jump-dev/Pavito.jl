@@ -313,6 +313,13 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
         obj = MOI.ScalarAffineFunction([MOI.ScalarAffineTerm(1.0, x) for x in model.slack_variables], 0.0)
         MOI.set(_inf(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
         model.inf_evaluator = InfeasibleNLPEvaluator(model.nlp_block.evaluator, length(model.inf_variables), falses(length(model.nlp_block.constraint_bounds)))
+        for i in eachindex(model.nlp_block.constraint_bounds)
+            bounds = model.nlp_block.constraint_bounds[i]
+            if set isa MOI.LessThan
+                model.inf_evaluator.minus[i] = true
+            end
+            set = _bound_set(bounds.lower, bounds.upper)
+        end
         bounds = [model.nlp_block.constraint_bounds; map(bound -> MOI.NLPBoundsPair(0.0, Inf), model.nlp_block.constraint_bounds)]
         MOI.set(_inf(model), MOI.NLPBlock(), MOI.NLPBlockData(bounds, model.inf_evaluator, false))
     end
@@ -324,15 +331,7 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
     g = zeros(length(model.nlp_block.constraint_bounds))
     MOI.eval_constraint(model.nlp_block.evaluator, g, mip_solution)
     for i in eachindex(model.nlp_block.constraint_bounds)
-        bounds = model.nlp_block.constraint_bounds[i]
-        set = _bound_set(bounds.lower, bounds.upper)
-        if set isa MOI.GreaterThan
-            val = set.lower - g[i]
-        else
-            @assert set isa MOI.LessThan
-            val = g[i] - set.upper
-            model.inf_evaluator.minus[i] = true
-        end
+        val = model.inf_evaluator.minus[i] ? (g[i] - set.upper) : (set.lower - g[i])
         # sign of the slack changes if the constraint direction changes
         MOI.set(_inf(model), MOI.VariablePrimalStart(), model.slack_variables[i], max(0.0, val))
     end
