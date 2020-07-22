@@ -83,10 +83,10 @@ function run_qp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, red
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(getobjectivevalue(m), -12.162277, atol=TOL)
-        @test isapprox(getobjbound(m), -12.162277, atol=TOL)
-        @test isapprox(getvalue(x), 3, atol=TOL)
-        @test isapprox(getvalue(y), 3.162277, atol=TOL)
+        @test isapprox(objective_value(m), -12.162277, atol=TOL)
+        @test isapprox(objective_bound(m), -12.162277, atol=TOL)
+        @test isapprox(value(x), 3, atol=TOL)
+        @test isapprox(value(y), 3.162277, atol=TOL)
     end
 
     testname = "QP maximize"
@@ -106,10 +106,10 @@ function run_qp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, red
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(getobjectivevalue(m), 9.5, atol=TOL)
-        @test isapprox(getobjbound(m), 9.5, atol=TOL)
-        @test isapprox(getvalue(x), 3, atol=TOL)
-        @test isapprox(getvalue(y), 0.5, atol=TOL)
+        @test isapprox(objective_value(m), 9.5, atol=TOL)
+        @test isapprox(objective_bound(m), 9.5, atol=TOL)
+        @test isapprox(value(x), 3, atol=TOL)
+        @test isapprox(value(y), 0.5, atol=TOL)
     end
 end
 
@@ -158,7 +158,7 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(getvalue(x), 2.0)
+        @test isapprox(value(x), 2.0)
     end
 
     testname = "Infeasible 1"
@@ -176,7 +176,7 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Infeasible
+        @test status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE]
     end
 
     testname = "Infeasible 2"
@@ -195,7 +195,7 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
         status = solve_jump(testname, m, redirect)
 
-        @test status == :Infeasible
+        @test status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE]
     end
 
     testname = "Continuous error"
@@ -233,7 +233,7 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(getobjectivevalue(m), 9.5, atol=TOL)
+        @test isapprox(objective_value(m), 9.5, atol=TOL)
     end
 
     testname = "Nonlinear objective"
@@ -251,7 +251,7 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(getobjectivevalue(m), -2.0, atol=TOL)
-        @test isapprox(getobjbound(m), -2.0, atol=TOL)
+        @test isapprox(objective_value(m), -2.0, atol=TOL)
+        @test isapprox(objective_bound(m), -2.0, atol=TOL)
     end
 end

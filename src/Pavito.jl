@@ -15,6 +15,7 @@ module Pavito
 
     using Printf
 
+    include("inf_nlp.jl")
     include("MOI_wrapper.jl")
     include("algorithm.jl")
 end

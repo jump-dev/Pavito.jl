@@ -14,8 +14,8 @@ import Pavito
 using Test
 using Printf
 
-using Logging
-disable_logging(Logging.Error)
+#using Logging
+#disable_logging(Logging.Error)
 
 include("nlptest.jl")
 include("conictest.jl")
@@ -33,7 +33,7 @@ tol_gap = 0.0
 include("solvers.jl")
 
 # run tests
-@testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false, true]
+@testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false] #, true]
     @testset "MILP solver - $mipname" for (mipname, mip) in mip_solvers
         if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
             # Only test MSD on lazy callback solvers
@@ -41,14 +41,14 @@ include("solvers.jl")
         end
         @testset "NLP models - $conname" for (conname, con) in cont_solvers
             println("\nNLP models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-            run_qp(msd, mip, con, ll, redirect)
+            #run_qp(msd, mip, con, ll, redirect)
             run_nlp(msd, mip, con, ll, redirect)
         end
-        @testset "Exp+SOC models - $conname" for (conname, con) in cont_solvers
-            println("\nExp+SOC models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-            run_soc(msd, mip, con, ll, redirect)
-            run_expsoc(msd, mip, con, ll, redirect)
-        end
+#        @testset "Exp+SOC models - $conname" for (conname, con) in cont_solvers
+#            println("\nExp+SOC models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
+#            run_soc(msd, mip, con, ll, redirect)
+#            run_expsoc(msd, mip, con, ll, redirect)
+#        end
         flush(stdout)
         flush(stderr)
     end

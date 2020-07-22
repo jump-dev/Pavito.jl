@@ -4,15 +4,63 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+function eval_objective(model::Optimizer, values)
+    return if model.nlp_block.has_objective
+        MOI.eval_objective(model.nlp_block.evaluator, values)
+    else
+        MOI.Utilities.eval_variables(vi -> values[vi.value], model.objective)
+    end
+end
+function eval_gradient(func::SQF, grad_f, values)
+    fill!(grad_f, 0.0)
+    for term in func.affine_terms
+        grad_f[term.variable_index.value] += term.coefficient
+    end
+    for term in func.quadratic_terms
+        grad_f[term.variable_index_1.value] += term.coefficient * values[term.variable_index_2.value]
+        # If variables are the same, the coefficient is already multiplied by 2
+        # 2 by definition of `SQF`.
+        if term.variable_index_1 != term.variable_index_2
+            grad_f[term.variable_index_2.value] += term.coefficient * values[term.variable_index_1.value]
+        end
+    end
+end
+function eval_objective_gradient(model::Optimizer, grad_f, values)
+    if model.nlp_block.has_objective
+        MOI.eval_objective_gradient(model.nlp_block.evaluator, grad_f, values)
+    else
+        eval_gradient(model.objective, grad_f, values)
+    end
+end
+
 function MOI.optimize!(model::Optimizer)
+    if isempty(model.int_indices)
+        error("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
+    end
+
+    if model.nlp_block.has_objective || model.objective isa SQF
+        if model.θ === nothing
+            model.θ = MOI.add_variable(model.mip_optimizer)
+            func = MOI.SingleVariable(model.θ)
+            MOI.set(model.mip_optimizer, MOI.ObjectiveFunction{typeof(func)}(), func)
+        end
+    else
+        if model.θ !== nothing
+            MOI.delete(model.mip_optimizer, model.θ)
+            model.θ = nothing
+        end
+    end
+
     start = time()
     nlp_time = 0.0
     mip_time = 0.0
     is_max = MOI.get(model.cont_optimizer, MOI.ObjectiveSense()) == MOI.MAX_SENSE
     comp = is_max ? (>) : (<)
+    model.objective_value = is_max ? -Inf :  Inf
+    model.objective_bound = is_max ?  Inf : -Inf
 
     if model.log_level > 0
-        println("\nMINLP has a ", (model.nlp_block.has_objective ? "nonlinear" : (model.quadratic_objective ? "quadratic" : "linear")), " objective, $(length(model.cont_variables)) variables (?? integer), ?? constraints ($(length(model.nlp_block.constraint_bounds)) nonlinear)")
+        println("\nMINLP has a ", (model.nlp_block.has_objective ? "nonlinear" : (model.objective isa SQF ? "quadratic" : "linear")), " objective, $(length(model.cont_variables)) variables ($(length(model.int_indices)) integer), $(length(model.nlp_block.constraint_bounds)) nonlinear constraints")
         println("\nPavito started, using ", (model.mip_solver_drives ? "MIP-solver-driven" : "iterative"), " method...")
     end
     flush(stdout)
@@ -46,6 +94,12 @@ function MOI.optimize!(model::Optimizer)
     end
     flush(stdout)
 
+    if MOI.supports(model.mip_optimizer, MOI.VariablePrimalStart(), MOI.VariableIndex) && all(isfinite, model.incumbent)
+        MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.mip_variables, model.incumbent)
+        MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.θ, eval_objective(model, model.incumbent))
+    end
+
+
     # TODO if have warmstart, use objective_value and warmstart MIP model as in MPB version of Pavito
     # start main OA algorithm
 
@@ -57,7 +111,7 @@ function MOI.optimize!(model::Optimizer)
             model.num_iters_or_callbacks += 1
 
             # if integer assignment has been seen before, use cached point
-            mip_solution = MOI.get(model.mip_optimizer, MOI.VariablePrimal(), model.mip_variables)
+            mip_solution = MOI.get(model.mip_optimizer, MOI.CallbackVariablePrimal(cb), model.mip_variables)
             round_mipsol = round.(mip_solution)
             if haskey(cache_contsol, round_mipsol)
                 # retrieve existing solution
@@ -79,17 +133,16 @@ function MOI.optimize!(model::Optimizer)
                 return
             end
         end
-        MOI.submit(model.mip_optimizer, MOI.LazyConstraintCallback(), lazy_callback)
+        MOI.set(model.mip_optimizer, MOI.LazyConstraintCallback(), lazy_callback)
 
-#        function heuristic_callback(cb)
-#            # if have a new best feasible solution since last heuristic solution added, set MIP solution to the new best feasible solution
-#            if model.new_incumb
-#                # TODO we should give the value of θ as well
-#                MOI.submit(model.mip_optimizer, MOI.HeuristicSolution(cb), model.mip_variables, model.incumbent)
-#                model.new_incumb = false
-#            end
-#        end
-#        MOI.submit(model.mip_optimizer, MOI.HeuristicCallback(), heuristic_callback)
+        function heuristic_callback(cb)
+            # if have a new best feasible solution since last heuristic solution added, set MIP solution to the new best feasible solution
+            if model.new_incumb
+                MOI.submit(model.mip_optimizer, MOI.HeuristicSolution(cb), [model.mip_variables; model.θ], [model.incumbent; model.objective_value])
+                model.new_incumb = false
+            end
+        end
+        MOI.set(model.mip_optimizer, MOI.HeuristicCallback(), heuristic_callback)
 
         if isfinite(model.timeout)
             MOI.set(model.mip_optimizer, MOI.TimeLimitSec(), max(1.0, model.timeout - (time() - start)))
@@ -124,6 +177,15 @@ function MOI.optimize!(model::Optimizer)
                 break
             end
             mip_solution = MOI.get(model.mip_optimizer, MOI.VariablePrimal(), model.mip_variables)
+
+            # update best bound from MIP bound
+            mip_obj_bound = MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
+            @show mip_obj_bound
+            @show model.objective_bound
+            if isfinite(mip_obj_bound) && comp(model.objective_bound, mip_obj_bound)
+                model.objective_bound = mip_obj_bound
+            end
+            @show model.objective_bound
 
             update_gap(model, is_max)
             printgap(model, start)
@@ -179,7 +241,7 @@ end
 function update_gap(model::Optimizer, is_max::Bool)
     # update gap if best bound and best objective are finite
     if isfinite(model.objective_value) && isfinite(model.objective_bound)
-        model.objective_gap = model.objective_value - model.objective_bound / (abs(model.objective_value) + 1e-5)
+        model.objective_gap = (model.objective_value - model.objective_bound) / (abs(model.objective_value) + 1e-5)
         if is_max
             model.objective_gap = -model.objective_gap
         end
@@ -189,11 +251,14 @@ end
 function check_progress(model::Optimizer, prev_mip_solution, mip_solution)
     # finish if optimal or cycling integer solutions
     int_ind = collect(model.int_indices)
+    @show mip_solution
+    @show prev_mip_solution
+    @show int_ind
     if model.objective_gap <= model.rel_gap
         model.status = MOI.OPTIMAL
         return true
     elseif round.(prev_mip_solution[int_ind]) == round.(mip_solution[int_ind])
-        @warn "mixed-integer cycling detected, terminating Pavito"
+        @warn "mixed-integer cycling detected ($(round.(prev_mip_solution[int_ind])) == $(round.(mip_solution[int_ind]))), terminating Pavito"
         if isfinite(model.objective_gap)
             model.status = MOI.ALMOST_OPTIMAL
         else
@@ -204,26 +269,30 @@ function check_progress(model::Optimizer, prev_mip_solution, mip_solution)
     return false
 end
 
-# solve NLP subproblem defined by integer assignment
-function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
-    for i in model.int_indices
-        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.LessThan{Float64}}(i)
-        if MOI.is_valid(model.cont_optimizer, ci)
-            MOI.delete(model.cont_optimizer, ci)
-        end
-        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.GreaterThan{Float64}}(i)
-        if MOI.is_valid(model.cont_optimizer, ci)
-            MOI.delete(model.cont_optimizer, ci)
-        end
-        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.EqualTo{Float64}}(i)
+function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
+    @show int_indices
+    for i in int_indices
+        vi = vars[i]
+        idx = vi.value
+        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.LessThan{Float64}}(idx)
+        MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
+        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.GreaterThan{Float64}}(idx)
+        MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
+        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.EqualTo{Float64}}(idx)
         set = MOI.EqualTo(mip_solution[i])
-        if MOI.is_valid(model.cont_optimizer, ci)
-            MOI.set(model.cont_optimizer, MOI.ConstraintSet(), ci, set)
+        if MOI.is_valid(optimizer, ci)
+            MOI.set(optimizer, MOI.ConstraintSet(), ci, set)
         else
-            func = MOI.SingleVariable(MOI.VariableIndex(i))
-            MOI.add_constraint(model.cont_optimizer, func, set)
+            func = MOI.SingleVariable(vi)
+            MOI.add_constraint(optimizer, func, set)
         end
     end
+end
+
+# solve NLP subproblem defined by integer assignment
+function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
+    @show mip_solution
+    fix_int_vars(model.cont_optimizer, model.cont_variables, mip_solution, model.int_indices)
     MOI.optimize!(model.cont_optimizer)
     if MOI.get(model.cont_optimizer, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT
         # subproblem is feasible, check if solution is new incumbent
@@ -238,10 +307,48 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
         return nlp_solution
     end
 
-    error("Infeasible NLP not implemented yet.")
+    # assume subproblem is infeasible, so solve infeasible recovery NLP subproblem
+    if model.slack_variables === nothing
+        model.slack_variables = MOI.add_variables(_inf(model), length(model.nlp_block.constraint_bounds))
+        obj = MOI.ScalarAffineFunction([MOI.ScalarAffineTerm(1.0, x) for x in model.slack_variables], 0.0)
+        MOI.set(_inf(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
+        model.inf_evaluator = InfeasibleNLPEvaluator(model.nlp_block.evaluator, length(model.inf_variables), falses(length(model.nlp_block.constraint_bounds)))
+        bounds = [model.nlp_block.constraint_bounds; map(bound -> MOI.NLPBoundsPair(0.0, Inf), model.nlp_block.constraint_bounds)]
+        MOI.set(_inf(model), MOI.NLPBlock(), MOI.NLPBlockData(bounds, model.inf_evaluator, false))
+    end
+
+    fix_int_vars(model.inf_optimizer, model.inf_variables, mip_solution, model.int_indices)
+    MOI.set(_inf(model), MOI.VariablePrimalStart(), model.inf_variables, mip_solution)
+
+    fill!(model.inf_evaluator.minus, false)
+    g = zeros(length(model.nlp_block.constraint_bounds))
+    MOI.eval_constraint(model.nlp_block.evaluator, g, mip_solution)
+    for i in eachindex(model.nlp_block.constraint_bounds)
+        bounds = model.nlp_block.constraint_bounds[i]
+        set = _bound_set(bounds.lower, bounds.upper)
+        if set isa MOI.GreaterThan
+            val = set.lower - g[i]
+        else
+            @assert set isa MOI.LessThan
+            val = g[i] - set.upper
+            model.inf_evaluator.minus[i] = true
+        end
+        # sign of the slack changes if the constraint direction changes
+        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.slack_variables[i], max(0.0, val))
+    end
+
+    # solve
+    MOI.optimize!(model.inf_optimizer)
+    status = MOI.get(model.inf_optimizer, MOI.PrimalStatus())
+    if status != MOI.FEASIBLE_POINT
+        @warn "Infeasible NLP problem terminated with primal status: $status. This cannot be as this NLP problem was feasible by design."
+    end
+
+    return MOI.get(model.inf_optimizer, MOI.VariablePrimal(), model.inf_variables)
 end
 
 function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max, callback_data = nothing)
+    @show cont_solution
     # eval g and jac_g at MIP solution
     num_constrs = length(model.nlp_block.constraint_bounds)
     g = zeros(num_constrs)
@@ -282,15 +389,23 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
         func = MOI.ScalarAffineFunction(
             [MOI.ScalarAffineTerm(
                 coef_new[i][j],
-                model.cont_variables[varidx_new[i][j]])
+                model.mip_variables[varidx_new[i][j]])
              for j in eachindex(varidx_new[i])],
             0.0
         )
         set = _bound_set(lb, ub)
-        if callback_data === nothing
-            MOI.add_constraint(model.mip_optimizer, func, set)
-        else
-            MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
+        @show func
+        @show set
+        MOI.Utilities.canonicalize!(func)
+        if !isempty(func.terms)
+            @show func
+            # TODO should we check that the inequality is not trivially infeasible ?
+            @show callback_data
+            if callback_data === nothing
+                MOI.add_constraint(model.mip_optimizer, func, set)
+            else
+                MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
+            end
         end
     end
 
@@ -301,40 +416,43 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
     # -f(x) + f'(c) * c <= f'(x) * x - θ
 
     # create obj cut
-    if model.nlp_block.has_objective
-        f = MOI.eval_objective(model.nlp_block.evaluator, cont_solution)
-        MOI.eval_objective_gradient(model.nlp_block.evaluator, grad_f, cont_solution)
+    if model.nlp_block.has_objective || model.objective isa SQF
+        f = eval_objective(model, cont_solution)
+        eval_objective_gradient(model, grad_f, cont_solution)
+        @show f
+        @show grad_f
         constant = -f
+        @show constant
         func = MOI.Utilities.operate(-, Float64, MOI.SingleVariable(model.θ))
         for j in eachindex(grad_f)
             if !iszero(grad_f[j])
                 constant += grad_f[j] * cont_solution[j]
-                push!(func, MOI.ScalarAffineTerm(grad_f[j], model.cont_variables[j]))
+                push!(func.terms, MOI.ScalarAffineTerm(grad_f[j], model.mip_variables[j]))
             end
         end
+        @show func
         set = is_max ? MOI.GreaterThan(constant) : MOI.LessThan(constant)
+        @show set
         if callback_data === nothing
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
             MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
         end
-    elseif model.quadratic_objective
-        error("TODO")
     end
 
     return
 end
 
 # print objective gap information for iterative
-function printgap(m::Optimizer, start)
-    if m.log_level >= 1
-        if (m.num_iters_or_callbacks == 1) || (m.log_level >= 2)
+function printgap(model::Optimizer, start)
+    if model.log_level >= 1
+        if (model.num_iters_or_callbacks == 1) || (model.log_level >= 2)
             @printf "\n%-5s | %-14s | %-14s | %-11s | %-11s\n" "Iter." "Best feasible" "Best bound" "Rel. gap" "Time (s)"
         end
-        if m.objgap < 1000
-            @printf "%5d | %+14.6e | %+14.6e | %11.3e | %11.3e\n" m.num_iters_or_callbacks m.objective_value m.objective_bound m.objective_gap (time() - start)
+        if model.objective_gap < 1000
+            @printf "%5d | %+14.6e | %+14.6e | %11.3e | %11.3e\n" model.num_iters_or_callbacks model.objective_value model.objective_bound model.objective_gap (time() - start)
         else
-            @printf "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n" m.num_iters_or_callbacks m.objective_value m.objective_bound (isnan(m.objective_gap) ? "Inf" : ">1000") (time() - start)
+            @printf "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n" model.num_iters_or_callbacks model.objective_value model.objective_bound (isnan(model.objective_gap) ? "Inf" : ">1000") (time() - start)
         end
         flush(stdout)
         flush(stderr)
@@ -343,24 +461,20 @@ function printgap(m::Optimizer, start)
 end
 
 # Taken from MatrixOptInterface.jl
-_no_upper(bound) = bound != typemax(bound)
-_no_lower(bound) = bound != typemin(bound)
+_has_upper(bound) = bound != typemax(bound)
+_has_lower(bound) = bound != typemin(bound)
 function _bound_set(lb::T, ub::T) where T
-    if _no_upper(ub)
-        if _no_lower(lb)
-            if ub == lb
-                return MOI.EqualTo(lb)
-            else
-                return MOI.Interval(lb, ub)
-            end
+    if _has_upper(ub)
+        if _has_lower(lb)
+            error("Only one bound per constraint supported by Pavito for NLP constraints but one NLP constraint has lower bound $lb and upper bound $ub.")
         else
             return MOI.LessThan(ub)
         end
     else
-        if _no_lower(lb)
+        if _has_lower(lb)
             return MOI.GreaterThan(lb)
         else
-            error("Both bounds are infinite: $lb, $ub")
+            error("At least one bound per constraint needed by Pavito for NLP constraints.")
         end
     end
 end

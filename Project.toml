@@ -8,7 +8,7 @@ MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
-GLPK = "0.14.0"
+GLPK = "0.13.0"
 Ipopt = "0.6.2"
 JuMP = "0.21.2"
 MathOptInterface = "0.9.14"
