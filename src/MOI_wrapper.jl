@@ -191,8 +191,6 @@ function MOI.supports_constraint(model::Optimizer, F::Type{MOI.SingleVariable}, 
 end
 function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI.AbstractScalarSet)
     if is_discrete(typeof(set))
-        @show model.mip_variables
-        @show func.variable.value
         push!(model.int_indices, func.variable.value)
     else
         MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)

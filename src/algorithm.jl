@@ -185,12 +185,9 @@ function MOI.optimize!(model::Optimizer)
 
             # update best bound from MIP bound
             mip_obj_bound = MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
-            @show mip_obj_bound
-            @show model.objective_bound
             if isfinite(mip_obj_bound) && comp(model.objective_bound, mip_obj_bound)
                 model.objective_bound = mip_obj_bound
             end
-            @show model.objective_bound
 
             update_gap(model, is_max)
             printgap(model, start)
@@ -256,9 +253,6 @@ end
 function check_progress(model::Optimizer, prev_mip_solution, mip_solution)
     # finish if optimal or cycling integer solutions
     int_ind = collect(model.int_indices)
-    @show mip_solution
-    @show prev_mip_solution
-    @show int_ind
     if model.objective_gap <= model.rel_gap
         model.status = MOI.OPTIMAL
         return true
@@ -275,7 +269,6 @@ function check_progress(model::Optimizer, prev_mip_solution, mip_solution)
 end
 
 function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
-    @show int_indices
     for i in int_indices
         vi = vars[i]
         idx = vi.value
@@ -296,7 +289,6 @@ end
 
 # solve NLP subproblem defined by integer assignment
 function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
-    @show mip_solution
     fix_int_vars(model.cont_optimizer, model.cont_variables, mip_solution, model.int_indices)
     MOI.optimize!(model.cont_optimizer)
     if MOI.get(model.cont_optimizer, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT
@@ -411,13 +403,9 @@ function add_cut(model::Optimizer, cont_solution, gc, dgc_idx, dgc_nzv, set, cal
         0.0
     )
     set = MOI.Utilities.shift_constant(set, Δ - gc)
-    @show func
-    @show set
     MOI.Utilities.canonicalize!(func)
     if !isempty(func.terms)
-        @show func
         # TODO should we check that the inequality is not trivially infeasible ?
-        @show callback_data
         if callback_data === nothing
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
@@ -451,7 +439,6 @@ function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
 end
 
 function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max, callback_data = nothing)
-    @show cont_solution
     if model.nlp_block !== nothing
         # eval g and jac_g at MIP solution
         num_constrs = length(model.nlp_block.constraint_bounds)
@@ -489,10 +476,7 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
     if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
         f = eval_objective(model, cont_solution)
         eval_objective_gradient(model, grad_f, cont_solution)
-        @show f
-        @show grad_f
         constant = -f
-        @show constant
         func = MOI.Utilities.operate(-, Float64, MOI.SingleVariable(model.θ))
         for j in eachindex(grad_f)
             if !iszero(grad_f[j])
@@ -500,9 +484,7 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
                 push!(func.terms, MOI.ScalarAffineTerm(grad_f[j], model.mip_variables[j]))
             end
         end
-        @show func
         set = is_max ? MOI.GreaterThan(constant) : MOI.LessThan(constant)
-        @show set
         if callback_data === nothing
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
