@@ -44,6 +44,8 @@ include("solvers.jl")
             run_qp(msd, mip, con, ll, redirect)
             run_nlp(msd, mip, con, ll, redirect)
         end
+        # TODO enable SOC tests once MOI v0.9.15 is released thanks to https://github.com/jump-dev/MathOptInterface.jl/pull/1046
+        # For EXP tests, we might probably need https://github.com/jump-dev/MathOptInterface.jl/issues/846
 #        @testset "Exp+SOC models - $conname" for (conname, con) in cont_solvers
 #            println("\nExp+SOC models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
 #            run_soc(msd, mip, con, ll, redirect)
