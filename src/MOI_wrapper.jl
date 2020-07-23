@@ -27,12 +27,18 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     mip_variables::Vector{MOI.VariableIndex}
     cont_variables::Vector{MOI.VariableIndex}
     inf_variables::Vector{MOI.VariableIndex}
-    slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
+    nl_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
+    quad_less_than_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
+    quad_greater_than_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
+    quad_less_than_inf_con::Union{Nothing, Vector{MOI.ConstraintIndex{SQF, MOI.LessThan{Float64}}}}
+    quad_greater_than_inf_con::Union{Nothing, Vector{MOI.ConstraintIndex{SQF, MOI.LessThan{Float64}}}}
     inf_evaluator::InfeasibleNLPEvaluator
     int_indices::BitSet
 
     nlp_block::Union{Nothing, MOI.NLPBlockData}
     objective::Union{Nothing, MOI.AbstractScalarFunction}
+    quad_less_than::Vector{Tuple{SQF, MOI.LessThan{Float64}}}
+    quad_greater_than::Vector{Tuple{SQF, MOI.GreaterThan{Float64}}}
     status::MOI.TerminationStatusCode
     incumbent::Vector{Float64}
     new_incumb::Bool
@@ -67,11 +73,17 @@ function MOI.empty!(model::Optimizer)
     model.mip_variables = MOI.VariableIndex[]
     model.cont_variables = MOI.VariableIndex[]
     model.inf_variables = MOI.VariableIndex[]
-    model.slack_variables = nothing
+    model.nl_slack_variables = nothing
+    model.quad_less_than_slack_variables = nothing
+    model.quad_greater_than_slack_variables = nothing
+    model.quad_less_than_inf_con = nothing
+    model.quad_greater_than_inf_con = nothing
     model.int_indices = BitSet()
 
     model.nlp_block = nothing
     model.objective = nothing
+    model.quad_less_than = Tuple{SQF, MOI.LessThan{Float64}}[]
+    model.quad_greater_than = Tuple{SQF, MOI.GreaterThan{Float64}}[]
     model.status = MOI.OPTIMIZE_NOT_CALLED
     model.incumbent = Float64[]
     model.new_incumb = false
@@ -128,16 +140,34 @@ function _inf(model::Optimizer)
     return model.inf_optimizer
 end
 
+function clean_slacks(model::Optimizer)
+    if model.nl_slack_variables !== nothing
+        MOI.delete(_inf(model), model.nl_slack_variables)
+        model.nl_slack_variables = nothing
+    end
+    if model.quad_less_than_slack_variables !== nothing
+        MOI.delete(_inf(model), model.quad_less_than_slack_variables)
+        model.quad_less_than_slack_variables = nothing
+        MOI.delete(_inf(model), model.quad_less_than_inf_con)
+        model.quad_less_than_inf_con = nothing
+    end
+    if model.quad_greater_than_slack_variables !== nothing
+        MOI.delete(_inf(model), model.quad_greater_than_slack_variables)
+        model.quad_greater_than_slack_variables = nothing
+        MOI.delete(_inf(model), model.quad_greater_than_inf_con)
+        model.quad_greater_than_inf_con = nothing
+    end
+end
+
 function MOI.add_variable(model::Optimizer)
     push!(model.mip_variables, MOI.add_variable(_mip(model)))
     push!(model.cont_variables, MOI.add_variable(_cont(model)))
-    if model.slack_variables !== nothing
+    push!(model.inf_variables, MOI.add_variable(_inf(model)))
+    if model.nl_slack_variables !== nothing
         # The slack variables are assumed to be added after all the `inf_variables`
         # so we delete them now and will add it back during `optimize!` if needed.
-        MOI.delete(_inf(model), model.slack_variables)
-        model.slack_variables = nothing
+        clean_slacks(model)
     end
-    push!(model.inf_variables, MOI.add_variable(_inf(model)))
     push!(model.incumbent, NaN)
     return MOI.VariableIndex(length(model.mip_variables))
 end
@@ -155,11 +185,11 @@ _map(variables::Vector{MOI.VariableIndex}, x) = MOI.Utilities.map_indices(vi -> 
 
 is_discrete(::Type{<:MOI.AbstractSet}) = false
 is_discrete(::Type{<:Union{MOI.Integer, MOI.ZeroOne}}) = true
-function MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.AbstractFunction}, S::Type{<:MOI.AbstractSet})
+function MOI.supports_constraint(model::Optimizer, F::Type{MOI.SingleVariable}, S::Type{<:MOI.AbstractScalarSet})
     return MOI.supports_constraint(_mip(model), F, S) &&
         (is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
 end
-function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI.AbstractSet)
+function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI.AbstractScalarSet)
     if is_discrete(typeof(set))
         @show model.mip_variables
         @show func.variable.value
@@ -170,6 +200,24 @@ function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI
     end
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
+function MOI.supports_constraint(model::Optimizer, F::Type{SQF}, S::Type{<:Union{MOI.LessThan{Float64}, MOI.GreaterThan{Float64}}})
+    return MOI.supports_constraint(_cont(model), F, S)
+end
+function MOI.add_constraint(model::Optimizer, func::SQF, set::MOI.LessThan{Float64})
+    clean_slacks(model)
+    MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
+    push!(model.quad_less_than, (MOI.Utilities.canonical(func), copy(set)))
+    return MOI.ConstraintIndex{typeof(func), typeof(set)}(length(model.quad_less_than))
+end
+function MOI.add_constraint(model::Optimizer, func::SQF, set::MOI.GreaterThan{Float64})
+    clean_slacks(model)
+    MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
+    push!(model.quad_greater_than, (MOI.Utilities.canonical(func), copy(set)))
+    return MOI.ConstraintIndex{typeof(func), typeof(set)}(length(model.quad_greater_than))
+end
+function MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.AbstractFunction}, S::Type{<:MOI.AbstractSet})
+    return MOI.supports_constraint(_mip(model), F, S) && MOI.supports_constraint(_cont(model), F, S)
+end
 function MOI.add_constraint(model::Optimizer, func::MOI.AbstractFunction, set::MOI.AbstractSet)
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
     MOI.add_constraint(_inf(model), _map(model.inf_variables, func), set)
@@ -177,6 +225,7 @@ function MOI.add_constraint(model::Optimizer, func::MOI.AbstractFunction, set::M
 end
 MOI.supports(::Optimizer, ::MOI.NLPBlock) = true
 function MOI.set(model::Optimizer, attr::MOI.NLPBlock, block::MOI.NLPBlockData)
+    clean_slacks(model)
     model.nlp_block = block
     MOI.set(_cont(model), attr, block)
 end
@@ -222,8 +271,8 @@ end
 MOI.get(model::Optimizer, ::MOI.SolveTime) = model.total_time
 
 MOI.get(model::Optimizer, ::MOI.TerminationStatus) = model.status
-function MOI.get(model::Optimizer, ::MOI.VariablePrimal, vi::MOI.VariableIndex)
-    return model.incumbent[vi.value]
+function MOI.get(model::Optimizer, ::MOI.VariablePrimal, v::MOI.VariableIndex)
+    return model.incumbent[v.value]
 end
 MOI.get(model::Optimizer, ::MOI.ObjectiveValue) = model.objective_value
 MOI.get(model::Optimizer, ::MOI.ObjectiveBound) = model.objective_bound

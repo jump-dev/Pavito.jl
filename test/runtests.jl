@@ -41,7 +41,7 @@ include("solvers.jl")
         end
         @testset "NLP models - $conname" for (conname, con) in cont_solvers
             println("\nNLP models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-            #run_qp(msd, mip, con, ll, redirect)
+            run_qp(msd, mip, con, ll, redirect)
             run_nlp(msd, mip, con, ll, redirect)
         end
 #        @testset "Exp+SOC models - $conname" for (conname, con) in cont_solvers

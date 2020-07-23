@@ -4,11 +4,12 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+eval_func(values, func) = MOI.Utilities.eval_variables(vi -> values[vi.value], func)
 function eval_objective(model::Optimizer, values)
     return if model.nlp_block.has_objective
         MOI.eval_objective(model.nlp_block.evaluator, values)
     else
-        MOI.Utilities.eval_variables(vi -> values[vi.value], model.objective)
+        eval_func(values, model.objective)
     end
 end
 function eval_gradient(func::SQF, grad_f, values)
@@ -26,7 +27,7 @@ function eval_gradient(func::SQF, grad_f, values)
     end
 end
 function eval_objective_gradient(model::Optimizer, grad_f, values)
-    if model.nlp_block.has_objective
+    if (model.nlp_block !== nothing && model.nlp_block.has_objective)
         MOI.eval_objective_gradient(model.nlp_block.evaluator, grad_f, values)
     else
         eval_gradient(model.objective, grad_f, values)
@@ -38,7 +39,7 @@ function MOI.optimize!(model::Optimizer)
         error("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
     end
 
-    if model.nlp_block.has_objective || model.objective isa SQF
+    if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
         if model.θ === nothing
             model.θ = MOI.add_variable(model.mip_optimizer)
             func = MOI.SingleVariable(model.θ)
@@ -60,14 +61,18 @@ function MOI.optimize!(model::Optimizer)
     model.objective_bound = is_max ?  Inf : -Inf
 
     if model.log_level > 0
-        println("\nMINLP has a ", (model.nlp_block.has_objective ? "nonlinear" : (model.objective isa SQF ? "quadratic" : "linear")), " objective, $(length(model.cont_variables)) variables ($(length(model.int_indices)) integer), $(length(model.nlp_block.constraint_bounds)) nonlinear constraints")
+        println("\nMINLP has a ", ((model.nlp_block !== nothing && model.nlp_block.has_objective) ? "nonlinear" : (model.objective isa SQF ? "quadratic" : "linear")), " objective, $(length(model.cont_variables)) variables ($(length(model.int_indices)) integer), $(model.nlp_block === nothing ? 0 : length(model.nlp_block.constraint_bounds)) nonlinear constraints, $(length(model.quad_less_than) + length(model.quad_greater_than)) quadratic constraints.")
         println("\nPavito started, using ", (model.mip_solver_drives ? "MIP-solver-driven" : "iterative"), " method...")
     end
     flush(stdout)
 
-    MOI.initialize(model.nlp_block.evaluator, intersect([:Grad, :Jac, :Hess], MOI.features_available(model.nlp_block.evaluator)))
-    jac_IJ = MOI.jacobian_structure(model.nlp_block.evaluator)
-    jac_V = zeros(length(jac_IJ))
+    if model.nlp_block === nothing
+        jac_V = jac_IJ = nothing
+    else
+        MOI.initialize(model.nlp_block.evaluator, intersect([:Grad, :Jac, :Hess], MOI.features_available(model.nlp_block.evaluator)))
+        jac_IJ = MOI.jacobian_structure(model.nlp_block.evaluator)
+        jac_V = zeros(length(jac_IJ))
+    end
     grad_f = zeros(length(model.cont_variables))
 
     # solve initial continuous relaxation NLP model
@@ -308,20 +313,48 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
     end
 
     # assume subproblem is infeasible, so solve infeasible recovery NLP subproblem
-    if model.slack_variables === nothing
-        model.slack_variables = MOI.add_variables(_inf(model), length(model.nlp_block.constraint_bounds))
-        obj = MOI.ScalarAffineFunction([MOI.ScalarAffineTerm(1.0, x) for x in model.slack_variables], 0.0)
-        MOI.set(_inf(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
-        model.inf_evaluator = InfeasibleNLPEvaluator(model.nlp_block.evaluator, length(model.inf_variables), falses(length(model.nlp_block.constraint_bounds)))
-        for i in eachindex(model.nlp_block.constraint_bounds)
-            bounds = model.nlp_block.constraint_bounds[i]
-            if set isa MOI.LessThan
-                model.inf_evaluator.minus[i] = true
+    if (model.nlp_block !== nothing && !isempty(model.nlp_block.constraint_bounds) && model.nl_slack_variables === nothing) ||
+        (!isempty(model.quad_less_than) && model.quad_less_than_slack_variables === nothing) ||
+        (!isempty(model.quad_greater_than) && model.quad_greater_than_slack_variables === nothing)
+        obj = MOI.ScalarAffineFunction([MOI.ScalarAffineTerm(1.0, x) for x in model.nl_slack_variables], 0.0)
+        _add_to_obj(vi::MOI.VariableIndex) = push!(obj.terms, MOI.ScalarAffineTerm(1.0, vi))
+        if model.nlp_block !== nothing && !isempty(model.nlp_block.constraint_bounds)
+            bounds = copy(model.nlp_block.constraint_bounds)
+            model.inf_evaluator = InfeasibleNLPEvaluator(model.nlp_block.evaluator, length(model.inf_variables), falses(length(model.nlp_block.constraint_bounds)))
+            model.nl_slack_variables = MOI.add_variables(_inf(model), length(model.nlp_block.constraint_bounds))
+            for i in eachindex(model.nlp_block.constraint_bounds)
+                _add_to_obj(model.nl_slack_variables[i])
+                push!(bounds, MOI.NLPBoundsPair(0.0, Inf))
+                set = _bound_set(model, i)
+                if set isa MOI.LessThan
+                    model.inf_evaluator.minus[i] = true
+                end
             end
-            set = _bound_set(bounds.lower, bounds.upper)
+            MOI.set(_inf(model), MOI.NLPBlock(), MOI.NLPBlockData(bounds, model.inf_evaluator, false))
         end
-        bounds = [model.nlp_block.constraint_bounds; map(bound -> MOI.NLPBoundsPair(0.0, Inf), model.nlp_block.constraint_bounds)]
-        MOI.set(_inf(model), MOI.NLPBlock(), MOI.NLPBlockData(bounds, model.inf_evaluator, false))
+        # We need to add quadratic variables afterwards as `InfeasibleNLPEvaluator` assumes
+        # that the original variables are directly followed by the NL slack variables.
+        if !isempty(model.quad_less_than)
+            model.quad_less_than_slack_variables = MOI.add_variables(_inf(model), length(model.quad_less_than))
+            model.quad_less_than_inf_con = [
+                MOI.add_constraint(_inf(model), MOI.Utilities.operate(-, Float64, func, MOI.SingleVariable(MOI.quad_less_than_slack_variables[i])), set)
+                for i in eachindex(model.quad_less_than)
+            ]
+            for vi in model.quad_less_than_slack_variables
+                _add_to_obj(vi)
+            end
+        end
+        if !isempty(model.quad_greater_than)
+            model.quad_greater_than_slack_variables = MOI.add_variables(_inf(model), length(model.quad_greater_than))
+            model.quad_greater_than_inf_con = [
+                MOI.add_constraint(_inf(model), MOI.Utilities.operate(+, Float64, func, MOI.SingleVariable(MOI.quad_greater_than_slack_variables[i])), set)
+                for i in eachindex(model.quad_greater_than)
+            ]
+            for vi in model.quad_greater_than_slack_variables
+                _add_to_obj(vi)
+            end
+        end
+        MOI.set(_inf(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
     end
 
     fix_int_vars(model.inf_optimizer, model.inf_variables, mip_solution, model.int_indices)
@@ -331,9 +364,18 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
     g = zeros(length(model.nlp_block.constraint_bounds))
     MOI.eval_constraint(model.nlp_block.evaluator, g, mip_solution)
     for i in eachindex(model.nlp_block.constraint_bounds)
-        val = model.inf_evaluator.minus[i] ? (g[i] - set.upper) : (set.lower - g[i])
+        bounds = model.nlp_block.constraint_bounds[i]
+        val = model.inf_evaluator.minus[i] ? (g[i] - bounds.upper) : (bounds.lower - g[i])
         # sign of the slack changes if the constraint direction changes
-        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.slack_variables[i], max(0.0, val))
+        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.nl_slack_variables[i], max(0.0, val))
+    end
+    for i in eachindex(model.quad_less_than)
+        val = eval_func(mip_solution, model.quad_less_than[i][1]) - model.quad_less_than[i][2].upper
+        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.quad_less_than_slack_variables[i], max(0.0, val))
+    end
+    for i in eachindex(model.quad_greater_than)
+        val = model.quad_greater_than[i][2].lower - eval_func(mip_solution, model.quad_greater_than[i][1])
+        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.quad_greater_than_slack_variables[i], max(0.0, val))
     end
 
     # solve
@@ -346,67 +388,96 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
     return MOI.get(model.inf_optimizer, MOI.VariablePrimal(), model.inf_variables)
 end
 
-function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max, callback_data = nothing)
-    @show cont_solution
-    # eval g and jac_g at MIP solution
-    num_constrs = length(model.nlp_block.constraint_bounds)
-    g = zeros(num_constrs)
-    MOI.eval_constraint(model.nlp_block.evaluator, g, cont_solution)
-    MOI.eval_constraint_jacobian(model.nlp_block.evaluator, jac_V, cont_solution)
+# By convexity of g(x), we know that g(x) >= g(c) + g'(c) * (x - c)
+# Given a constraint ub >= g(x), we rewrite it as
+# ub - g(x) + g'(c) * c >= g'(x) * x
+# If the constraint is `g(x) <= lb` then we assume that `g(x)` is concave instead and,
+# it is rewritten as
+# lb - g(x) + g'(c) * c <= g'(x) * x
+# If the constraint is `lb <= g(x) <= ub` or `g(x) == lb == ub` then we assume that
+# `g(x)` is linear.
 
-    # create rows corresponding to constraints in sparse format
-    varidx_new = [zeros(Int, 0) for i in 1:num_constrs]
-    coef_new = [zeros(0) for i in 1:num_constrs]
-
-    for k in eachindex(jac_IJ)
-        row, col = jac_IJ[k]
-        push!(varidx_new[row], col)
-        push!(coef_new[row], jac_V[k])
+function add_cut(model::Optimizer, cont_solution, gc, dgc_idx, dgc_nzv, set, callback_data)
+    Δ = 0.0
+    for i in eachindex(dgc_idx)
+        Δ += dgc_nzv[i] * cont_solution[dgc_idx[i]]
     end
 
-    # By convexity of g(x), we know that g(x) >= g(c) + g'(c) * (x - c)
-    # Given a constraint ub >= g(x), we rewrite it as
-    # ub - g(x) + g'(c) * c >= g'(x) * x
-    # If the constraint is `g(x) <= lb` then we assume that `g(x)` is concave instead and,
-    # it is rewritten as
-    # lb - g(x) + g'(c) * c <= g'(x) * x
-    # If the constraint is `lb <= g(x) <= ub` or `g(x) == lb == ub` then we assume that
-    # `g(x)` is linear.
-
-    # create constraint cuts
-    for i in 1:num_constrs
-        # create supporting hyperplane
-        lb = model.nlp_block.constraint_bounds[i].lower - g[i]
-        ub = model.nlp_block.constraint_bounds[i].upper - g[i]
-
-        for j in eachindex(varidx_new[i])
-            Δ = coef_new[i][j] * cont_solution[varidx_new[i][j]]
-            lb += Δ
-            ub += Δ
-        end
-
-        func = MOI.ScalarAffineFunction(
-            [MOI.ScalarAffineTerm(
-                coef_new[i][j],
-                model.mip_variables[varidx_new[i][j]])
-             for j in eachindex(varidx_new[i])],
-            0.0
-        )
-        set = _bound_set(lb, ub)
+    func = MOI.ScalarAffineFunction(
+        [MOI.ScalarAffineTerm(
+            dgc_nzv[i],
+            model.mip_variables[dgc_idx[i]])
+         for i in eachindex(dgc_idx)],
+        0.0
+    )
+    set = MOI.Utilities.shift_constant(set, Δ - gc)
+    @show func
+    @show set
+    MOI.Utilities.canonicalize!(func)
+    if !isempty(func.terms)
         @show func
-        @show set
-        MOI.Utilities.canonicalize!(func)
-        if !isempty(func.terms)
-            @show func
-            # TODO should we check that the inequality is not trivially infeasible ?
-            @show callback_data
-            if callback_data === nothing
-                MOI.add_constraint(model.mip_optimizer, func, set)
-            else
-                MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
+        # TODO should we check that the inequality is not trivially infeasible ?
+        @show callback_data
+        if callback_data === nothing
+            MOI.add_constraint(model.mip_optimizer, func, set)
+        else
+            MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
+        end
+    end
+
+end
+
+function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
+    for (func, set) in cons
+        gc = eval_func(cont_solution, func)
+        dgc_idx = Int64[]
+        dgc_nzv = Float64[]
+        for term in func.affine_terms
+            push!(dgc_idx, term.variable_index.value)
+            push!(dgc_nzv, term.coefficient)
+        end
+        for term in func.quadratic_terms
+            push!(dgc_idx, term.variable_index_1.value)
+            push!(dgc_nzv, term.coefficient * cont_solution[term.variable_index_2.value])
+            # If variables are the same, the coefficient is already multiplied by 2
+            # 2 by definition of `SQF`.
+            if term.variable_index_1 != term.variable_index_2
+                push!(dgc_idx, term.variable_index_2.value)
+                push!(dgc_nzv, term.coefficient * cont_solution[term.variable_index_1.value])
             end
         end
+        add_cut(model, cont_solution, gc, dgc_idx, dgc_nzv, set, callback_data)
     end
+end
+
+function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max, callback_data = nothing)
+    @show cont_solution
+    if model.nlp_block !== nothing
+        # eval g and jac_g at MIP solution
+        num_constrs = length(model.nlp_block.constraint_bounds)
+        g = zeros(num_constrs)
+        MOI.eval_constraint(model.nlp_block.evaluator, g, cont_solution)
+        MOI.eval_constraint_jacobian(model.nlp_block.evaluator, jac_V, cont_solution)
+
+        # create rows corresponding to constraints in sparse format
+        varidx_new = [zeros(Int, 0) for i in 1:num_constrs]
+        coef_new = [zeros(0) for i in 1:num_constrs]
+
+        for k in eachindex(jac_IJ)
+            row, col = jac_IJ[k]
+            push!(varidx_new[row], col)
+            push!(coef_new[row], jac_V[k])
+        end
+
+        # create constraint cuts
+        for i in 1:num_constrs
+            # create supporting hyperplane
+            set = _bound_set(model, i)
+            add_cut(model, cont_solution, g[i], varidx_new[i], coef_new[i], set, callback_data)
+        end
+    end
+    add_quad_cuts(model, cont_solution, model.quad_less_than, callback_data)
+    add_quad_cuts(model, cont_solution, model.quad_greater_than, callback_data)
 
     # Given an objective `Min θ = f(x)` with a convex `f(x)`,
     # we have
@@ -415,7 +486,7 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
     # -f(x) + f'(c) * c <= f'(x) * x - θ
 
     # create obj cut
-    if model.nlp_block.has_objective || model.objective isa SQF
+    if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
         f = eval_objective(model, cont_solution)
         eval_objective_gradient(model, grad_f, cont_solution)
         @show f
@@ -462,6 +533,10 @@ end
 # Taken from MatrixOptInterface.jl
 _has_upper(bound) = bound != typemax(bound)
 _has_lower(bound) = bound != typemin(bound)
+function _bound_set(model::Optimizer, i::Integer)
+    bounds = model.nlp_block.constraint_bounds[i]
+    return _bound_set(bounds.lower, bounds.upper)
+end
 function _bound_set(lb::T, ub::T) where T
     if _has_upper(ub)
         if _has_lower(lb)
