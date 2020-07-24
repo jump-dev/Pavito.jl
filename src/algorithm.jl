@@ -293,12 +293,8 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
         if MOI.is_valid(optimizer, ci)
             MOI.set(optimizer, MOI.ConstraintSet(), ci, set)
         else
-            ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.ZeroOne}(idx)
-
-            if MOI.is_valid(optimizer, ci)
-                func = MOI.SingleVariable(vi)
-                MOI.add_constraint(optimizer, func, set)
-            end
+            func = MOI.SingleVariable(vi)
+            MOI.add_constraint(optimizer, func, set)
         end
     end
 end
