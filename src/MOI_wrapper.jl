@@ -278,3 +278,23 @@ function MOI.get(model::Optimizer, ::MOI.VariablePrimal, v::MOI.VariableIndex)
 end
 MOI.get(model::Optimizer, ::MOI.ObjectiveValue) = model.objective_value
 MOI.get(model::Optimizer, ::MOI.ObjectiveBound) = model.objective_bound
+
+function MOI.get(model::Optimizer, attr::MOI.PrimalStatus)
+    if MOI.get(model, MOI.TerminationStatus()) == MOI.OPTIMAL
+        return MOI.FEASIBLE_POINT
+    else
+        return MOI.NO_SOLUTION
+    end
+end
+
+function MOI.get(::Optimizer, ::MOI.DualStatus)
+    return MOI.NO_SOLUTION
+end
+
+function MOI.get(model::Optimizer, ::MOI.ResultCount)
+    return MOI.get(model, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT ? 1 : 0
+end
+
+function MOI.get(::Optimizer, ::MOI.SolverName)
+    return "Pavito"
+end
