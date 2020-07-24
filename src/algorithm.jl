@@ -312,24 +312,24 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
         _add_to_obj(vi::MOI.VariableIndex) = push!(obj.terms, MOI.ScalarAffineTerm(1.0, vi))
         if model.nlp_block !== nothing && !isempty(model.nlp_block.constraint_bounds)
             bounds = copy(model.nlp_block.constraint_bounds)
-            model.inf_evaluator = InfeasibleNLPEvaluator(model.nlp_block.evaluator, length(model.inf_variables), falses(length(model.nlp_block.constraint_bounds)))
-            model.nl_slack_variables = MOI.add_variables(_inf(model), length(model.nlp_block.constraint_bounds))
+            model.infeasible_evaluator = InfeasibleNLPEvaluator(model.nlp_block.evaluator, length(model.infeasible_variables), falses(length(model.nlp_block.constraint_bounds)))
+            model.nl_slack_variables = MOI.add_variables(_infeasible(model), length(model.nlp_block.constraint_bounds))
             for i in eachindex(model.nlp_block.constraint_bounds)
                 _add_to_obj(model.nl_slack_variables[i])
                 push!(bounds, MOI.NLPBoundsPair(0.0, Inf))
                 set = _bound_set(model, i)
                 if set isa MOI.LessThan
-                    model.inf_evaluator.minus[i] = true
+                    model.infeasible_evaluator.minus[i] = true
                 end
             end
-            MOI.set(_inf(model), MOI.NLPBlock(), MOI.NLPBlockData(bounds, model.inf_evaluator, false))
+            MOI.set(_infeasible(model), MOI.NLPBlock(), MOI.NLPBlockData(bounds, model.infeasible_evaluator, false))
         end
         # We need to add quadratic variables afterwards as `InfeasibleNLPEvaluator` assumes
         # that the original variables are directly followed by the NL slack variables.
         if !isempty(model.quad_less_than)
-            model.quad_less_than_slack_variables = MOI.add_variables(_inf(model), length(model.quad_less_than))
-            model.quad_less_than_inf_con = [
-                MOI.add_constraint(_inf(model), MOI.Utilities.operate(-, Float64, func, MOI.SingleVariable(MOI.quad_less_than_slack_variables[i])), set)
+            model.quad_less_than_slack_variables = MOI.add_variables(_infeasible(model), length(model.quad_less_than))
+            model.quad_less_than_infeasible_con = [
+                MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(-, Float64, func, MOI.SingleVariable(MOI.quad_less_than_slack_variables[i])), set)
                 for i in eachindex(model.quad_less_than)
             ]
             for vi in model.quad_less_than_slack_variables
@@ -337,47 +337,47 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
             end
         end
         if !isempty(model.quad_greater_than)
-            model.quad_greater_than_slack_variables = MOI.add_variables(_inf(model), length(model.quad_greater_than))
-            model.quad_greater_than_inf_con = [
-                MOI.add_constraint(_inf(model), MOI.Utilities.operate(+, Float64, func, MOI.SingleVariable(MOI.quad_greater_than_slack_variables[i])), set)
+            model.quad_greater_than_slack_variables = MOI.add_variables(_infeasible(model), length(model.quad_greater_than))
+            model.quad_greater_than_infeasible_con = [
+                MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(+, Float64, func, MOI.SingleVariable(MOI.quad_greater_than_slack_variables[i])), set)
                 for i in eachindex(model.quad_greater_than)
             ]
             for vi in model.quad_greater_than_slack_variables
                 _add_to_obj(vi)
             end
         end
-        MOI.set(_inf(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
+        MOI.set(_infeasible(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
     end
 
-    fix_int_vars(model.inf_optimizer, model.inf_variables, mip_solution, model.int_indices)
-    MOI.set(_inf(model), MOI.VariablePrimalStart(), model.inf_variables, mip_solution)
+    fix_int_vars(model.infeasible_optimizer, model.infeasible_variables, mip_solution, model.int_indices)
+    MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.infeasible_variables, mip_solution)
 
-    fill!(model.inf_evaluator.minus, false)
+    fill!(model.infeasible_evaluator.minus, false)
     g = zeros(length(model.nlp_block.constraint_bounds))
     MOI.eval_constraint(model.nlp_block.evaluator, g, mip_solution)
     for i in eachindex(model.nlp_block.constraint_bounds)
         bounds = model.nlp_block.constraint_bounds[i]
-        val = model.inf_evaluator.minus[i] ? (g[i] - bounds.upper) : (bounds.lower - g[i])
+        val = model.infeasible_evaluator.minus[i] ? (g[i] - bounds.upper) : (bounds.lower - g[i])
         # sign of the slack changes if the constraint direction changes
-        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.nl_slack_variables[i], max(0.0, val))
+        MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.nl_slack_variables[i], max(0.0, val))
     end
     for i in eachindex(model.quad_less_than)
         val = eval_func(mip_solution, model.quad_less_than[i][1]) - model.quad_less_than[i][2].upper
-        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.quad_less_than_slack_variables[i], max(0.0, val))
+        MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.quad_less_than_slack_variables[i], max(0.0, val))
     end
     for i in eachindex(model.quad_greater_than)
         val = model.quad_greater_than[i][2].lower - eval_func(mip_solution, model.quad_greater_than[i][1])
-        MOI.set(_inf(model), MOI.VariablePrimalStart(), model.quad_greater_than_slack_variables[i], max(0.0, val))
+        MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.quad_greater_than_slack_variables[i], max(0.0, val))
     end
 
     # solve
-    MOI.optimize!(model.inf_optimizer)
-    status = MOI.get(model.inf_optimizer, MOI.PrimalStatus())
+    MOI.optimize!(model.infeasible_optimizer)
+    status = MOI.get(model.infeasible_optimizer, MOI.PrimalStatus())
     if status != MOI.FEASIBLE_POINT
         @warn "Infeasible NLP problem terminated with primal status: $status. This cannot be as this NLP problem was feasible by design."
     end
 
-    return MOI.get(model.inf_optimizer, MOI.VariablePrimal(), model.inf_variables)
+    return MOI.get(model.infeasible_optimizer, MOI.VariablePrimal(), model.infeasible_variables)
 end
 
 # By convexity of g(x), we know that g(x) >= g(c) + g'(c) * (x - c)

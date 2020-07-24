@@ -19,34 +19,38 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     mip_solver                              # MILP solver
     cont_solver                             # Continuous NLP solver
 
-    mip_optimizer::Union{Nothing, MOI.ModelLike}
-    cont_optimizer::Union{Nothing, MOI.ModelLike}
-    inf_optimizer::Union{Nothing, MOI.ModelLike}
+    mip_optimizer::Union{Nothing, MOI.ModelLike}        # MILP optimizer instantiated from `mip_solver`
+    cont_optimizer::Union{Nothing, MOI.ModelLike}       # Continuous NLP optimizer instantiated from `cont_solver`
+    infeasible_optimizer::Union{Nothing, MOI.ModelLike} # Continuous NLP optimizer instantiated from `cont_solver` used when `cont_optimizer` is infeasible
 
-    θ::Union{Nothing, MOI.VariableIndex}
-    mip_variables::Vector{MOI.VariableIndex}
-    cont_variables::Vector{MOI.VariableIndex}
-    inf_variables::Vector{MOI.VariableIndex}
-    nl_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
-    quad_less_than_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
-    quad_greater_than_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}
-    quad_less_than_inf_con::Union{Nothing, Vector{MOI.ConstraintIndex{SQF, MOI.LessThan{Float64}}}}
-    quad_greater_than_inf_con::Union{Nothing, Vector{MOI.ConstraintIndex{SQF, MOI.LessThan{Float64}}}}
-    inf_evaluator::InfeasibleNLPEvaluator
-    int_indices::BitSet
+    θ::Union{Nothing, MOI.VariableIndex}                # MILP objective function when the original one is nonlineaer
+    mip_variables::Vector{MOI.VariableIndex}            # Variable indices of `mip_optimizer`
+    cont_variables::Vector{MOI.VariableIndex}           # Variable indices of `cont_optimizer`
+    infeasible_variables::Vector{MOI.VariableIndex}     # Variable indices of `infeasible_optimizer`
 
-    nlp_block::Union{Nothing, MOI.NLPBlockData}
-    objective::Union{Nothing, MOI.AbstractScalarFunction}
-    quad_less_than::Vector{Tuple{SQF, MOI.LessThan{Float64}}}
-    quad_greater_than::Vector{Tuple{SQF, MOI.GreaterThan{Float64}}}
-    status::MOI.TerminationStatusCode
-    incumbent::Vector{Float64}
-    new_incumb::Bool
-    total_time::Float64
-    objective_value::Float64
-    objective_bound::Float64
-    objective_gap::Float64
-    num_iters_or_callbacks::Int
+    # Slack variable indices for `infeasible_optimizer`
+    nl_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}                # for the nonlinear constraints
+    quad_less_than_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}}    # for the less than constraints
+    quad_greater_than_slack_variables::Union{Nothing, Vector{MOI.VariableIndex}} # for the greater than constraints
+
+    # Quadratic constraints for `infeasible_optimizer`
+    quad_less_than_infeasible_con::Union{Nothing, Vector{MOI.ConstraintIndex{SQF, MOI.LessThan{Float64}}}}       # `q - slack <= ub`
+    quad_greater_than_infeasible_con::Union{Nothing, Vector{MOI.ConstraintIndex{SQF, MOI.GreaterThan{Float64}}}} # `q + slack >= lb`
+    infeasible_evaluator::InfeasibleNLPEvaluator # NLP evaluator used for `infeasible_optimizer`
+    int_indices::BitSet # Indices of discrete variables
+
+    nlp_block::Union{Nothing, MOI.NLPBlockData}           # NLP block set to `Optimizer`
+    objective::Union{Nothing, MOI.AbstractScalarFunction} # Objective function set to `Optimizer`
+    quad_less_than::Vector{Tuple{SQF, MOI.LessThan{Float64}}}       # Cached quadratic less than constraints
+    quad_greater_than::Vector{Tuple{SQF, MOI.GreaterThan{Float64}}} # Cached quadratic greater than constraints
+    status::MOI.TerminationStatusCode # Termination status to be returned
+    incumbent::Vector{Float64}        # Starting values set and then current best nonlinear feasible solution
+    new_incumb::Bool                  # `true` if a better nonlinear feasible solution was found
+    total_time::Float64               # Total solve time
+    objective_value::Float64          # Objective value corresponding to `incumbent`
+    objective_bound::Float64          # Best objective bound found by MILP
+    objective_gap::Float64            # Objective gap between objective value and bound
+    num_iters_or_callbacks::Int       # Either the number of iterations or the number of calls to the lazy constraint callback if `mip_solver_drives`
 
     function Optimizer()
         model = new()
@@ -68,16 +72,16 @@ end
 function MOI.empty!(model::Optimizer)
     model.mip_optimizer = nothing
     model.cont_optimizer = nothing
-    model.inf_optimizer = nothing
+    model.infeasible_optimizer = nothing
     model.θ = nothing
     model.mip_variables = MOI.VariableIndex[]
     model.cont_variables = MOI.VariableIndex[]
-    model.inf_variables = MOI.VariableIndex[]
+    model.infeasible_variables = MOI.VariableIndex[]
     model.nl_slack_variables = nothing
     model.quad_less_than_slack_variables = nothing
     model.quad_greater_than_slack_variables = nothing
-    model.quad_less_than_inf_con = nothing
-    model.quad_greater_than_inf_con = nothing
+    model.quad_less_than_infeasible_con = nothing
+    model.quad_greater_than_infeasible_con = nothing
     model.int_indices = BitSet()
 
     model.nlp_block = nothing
@@ -132,39 +136,39 @@ function _cont(model::Optimizer)
     return model.cont_optimizer
 end
 
-function _inf(model::Optimizer)
-    if model.inf_optimizer === nothing
-        model.inf_optimizer = _new_cont(model.cont_solver)
-        MOI.set(model.inf_optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
+function _infeasible(model::Optimizer)
+    if model.infeasible_optimizer === nothing
+        model.infeasible_optimizer = _new_cont(model.cont_solver)
+        MOI.set(model.infeasible_optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
     end
-    return model.inf_optimizer
+    return model.infeasible_optimizer
 end
 
 function clean_slacks(model::Optimizer)
     if model.nl_slack_variables !== nothing
-        MOI.delete(_inf(model), model.nl_slack_variables)
+        MOI.delete(_infeasible(model), model.nl_slack_variables)
         model.nl_slack_variables = nothing
     end
     if model.quad_less_than_slack_variables !== nothing
-        MOI.delete(_inf(model), model.quad_less_than_slack_variables)
+        MOI.delete(_infeasible(model), model.quad_less_than_slack_variables)
         model.quad_less_than_slack_variables = nothing
-        MOI.delete(_inf(model), model.quad_less_than_inf_con)
-        model.quad_less_than_inf_con = nothing
+        MOI.delete(_infeasible(model), model.quad_less_than_infeasible_con)
+        model.quad_less_than_infeasible_con = nothing
     end
     if model.quad_greater_than_slack_variables !== nothing
-        MOI.delete(_inf(model), model.quad_greater_than_slack_variables)
+        MOI.delete(_infeasible(model), model.quad_greater_than_slack_variables)
         model.quad_greater_than_slack_variables = nothing
-        MOI.delete(_inf(model), model.quad_greater_than_inf_con)
-        model.quad_greater_than_inf_con = nothing
+        MOI.delete(_infeasible(model), model.quad_greater_than_infeasible_con)
+        model.quad_greater_than_infeasible_con = nothing
     end
 end
 
 function MOI.add_variable(model::Optimizer)
     push!(model.mip_variables, MOI.add_variable(_mip(model)))
     push!(model.cont_variables, MOI.add_variable(_cont(model)))
-    push!(model.inf_variables, MOI.add_variable(_inf(model)))
+    push!(model.infeasible_variables, MOI.add_variable(_infeasible(model)))
     if model.nl_slack_variables !== nothing
-        # The slack variables are assumed to be added after all the `inf_variables`
+        # The slack variables are assumed to be added after all the `infeasible_variables`
         # so we delete them now and will add it back during `optimize!` if needed.
         clean_slacks(model)
     end
@@ -194,7 +198,7 @@ function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI
         push!(model.int_indices, func.variable.value)
     else
         MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
-        MOI.add_constraint(_inf(model), _map(model.inf_variables, func), set)
+        MOI.add_constraint(_infeasible(model), _map(model.infeasible_variables, func), set)
     end
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
@@ -218,7 +222,7 @@ function MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.AbstractFunctio
 end
 function MOI.add_constraint(model::Optimizer, func::MOI.AbstractFunction, set::MOI.AbstractSet)
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
-    MOI.add_constraint(_inf(model), _map(model.inf_variables, func), set)
+    MOI.add_constraint(_infeasible(model), _map(model.infeasible_variables, func), set)
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
 MOI.supports(::Optimizer, ::MOI.NLPBlock) = true
