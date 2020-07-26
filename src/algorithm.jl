@@ -7,7 +7,7 @@
 eval_func(values, func) = MOI.Utilities.eval_variables(vi -> values[vi.value], func)
 
 function eval_objective(model::Optimizer, values)
-    if model.nlp_block != nothing && model.nlp_block.has_objective
+    if model.nlp_block !== nothing && model.nlp_block.has_objective
         return MOI.eval_objective(model.nlp_block.evaluator, values)
     else
         return eval_func(values, model.objective)
