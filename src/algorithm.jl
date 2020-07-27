@@ -5,13 +5,15 @@
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 eval_func(values, func) = MOI.Utilities.eval_variables(vi -> values[vi.value], func)
+
 function eval_objective(model::Optimizer, values)
-    return if model.nlp_block.has_objective
-        MOI.eval_objective(model.nlp_block.evaluator, values)
+    if model.nlp_block !== nothing && model.nlp_block.has_objective
+        return MOI.eval_objective(model.nlp_block.evaluator, values)
     else
-        eval_func(values, model.objective)
+        return eval_func(values, model.objective)
     end
 end
+
 function eval_gradient(func::SQF, grad_f, values)
     fill!(grad_f, 0.0)
     for term in func.affine_terms
@@ -101,7 +103,10 @@ function MOI.optimize!(model::Optimizer)
 
     if MOI.supports(model.mip_optimizer, MOI.VariablePrimalStart(), MOI.VariableIndex) && all(isfinite, model.incumbent)
         MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.mip_variables, model.incumbent)
-        MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.θ, eval_objective(model, model.incumbent))
+
+        if model.θ !== nothing
+            MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.θ, eval_objective(model, model.incumbent))
+        end
     end
 
 
@@ -143,10 +148,16 @@ function MOI.optimize!(model::Optimizer)
         function heuristic_callback(cb)
             # if have a new best feasible solution since last heuristic solution added, set MIP solution to the new best feasible solution
             if model.new_incumb
-                MOI.submit(model.mip_optimizer, MOI.HeuristicSolution(cb), [model.mip_variables; model.θ], [model.incumbent; model.objective_value])
+                if model.θ === nothing
+                    MOI.submit(model.mip_optimizer, MOI.HeuristicSolution(cb), model.mip_variables, model.incumbent)
+                else
+                    MOI.submit(model.mip_optimizer, MOI.HeuristicSolution(cb), [model.mip_variables; model.θ], [model.incumbent; model.objective_value])
+                end
+
                 model.new_incumb = false
             end
         end
+
         MOI.set(model.mip_optimizer, MOI.HeuristicCallback(), heuristic_callback)
 
         if isfinite(model.timeout)
@@ -278,6 +289,7 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
         MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
         ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.EqualTo{Float64}}(idx)
         set = MOI.EqualTo(mip_solution[i])
+
         if MOI.is_valid(optimizer, ci)
             MOI.set(optimizer, MOI.ConstraintSet(), ci, set)
         else
