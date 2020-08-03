@@ -340,20 +340,20 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
         # that the original variables are directly followed by the NL slack variables.
         if !isempty(model.quad_less_than)
             model.quad_less_than_slack_variables = MOI.add_variables(_infeasible(model), length(model.quad_less_than))
-            model.quad_less_than_infeasible_con = [
+            model.quad_less_than_infeasible_con = map(eachindex(model.quad_less_than)) do i
+                func, set = model.quad_less_than[i]
                 MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(-, Float64, func, MOI.SingleVariable(MOI.quad_less_than_slack_variables[i])), set)
-                for i in eachindex(model.quad_less_than)
-            ]
+            end
             for vi in model.quad_less_than_slack_variables
                 _add_to_obj(vi)
             end
         end
         if !isempty(model.quad_greater_than)
             model.quad_greater_than_slack_variables = MOI.add_variables(_infeasible(model), length(model.quad_greater_than))
-            model.quad_greater_than_infeasible_con = [
+            model.quad_greater_than_infeasible_con = map(eachindex(model.quad_greater_than)) do i
+                func, set = model.quad_greater_than[i]
                 MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(+, Float64, func, MOI.SingleVariable(MOI.quad_greater_than_slack_variables[i])), set)
-                for i in eachindex(model.quad_greater_than)
-            ]
+            end
             for vi in model.quad_greater_than_slack_variables
                 _add_to_obj(vi)
             end
