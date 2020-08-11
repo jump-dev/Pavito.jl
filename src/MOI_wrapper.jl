@@ -12,6 +12,7 @@ const SQF = MOI.ScalarQuadraticFunction{Float64}
 
 # Pavito solver
 mutable struct Optimizer <: MOI.AbstractOptimizer
+    silent::Bool
     log_level::Int                          # Verbosity flag: 0 for quiet, higher for basic solve info
     timeout::Float64                        # Time limit for algorithm (in seconds)
     rel_gap::Float64                        # Relative optimality gap termination condition
@@ -97,6 +98,12 @@ function MOI.empty!(model::Optimizer)
     model.objective_gap = Inf
     model.num_iters_or_callbacks = 0
     return
+end
+
+MOI.Utilities.supports_default_copy_to(::Optimizer, copy_names::Bool) = !copy_names
+
+function MOI.copy_to(model::Optimizer, src::MOI.ModelLike; copy_names = false)
+    return MOI.Utilities.default_copy_to(model, src; copy_names)
 end
 
 function _mip(model::Optimizer)
@@ -239,9 +246,10 @@ function MOI.set(model::Optimizer, attr::MOI.ObjectiveSense, sense)
     if sense == MOI.FEASIBILITY_SENSE
         model.objective = nothing
     end
-    MOI.set(model.mip_optimizer, attr, sense)
-    MOI.set(model.cont_optimizer, attr, sense)
+    MOI.set(_mip(model), attr, sense)
+    MOI.set(_cont(model), attr, sense)
 end
+MOI.get(model::Optimizer, attr::MOI.ObjectiveSense) = MOI.get(_mip(model), attr)
 function MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction)
     return MOI.supports(_mip(model), attr) && MOI.supports(_cont(model), attr)
 end
@@ -251,14 +259,14 @@ end
 function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction, func)
     # We make a copy (as the user might modify it)
     model.objective = copy(func)
-    MOI.set(model.mip_optimizer, attr, _map(model.mip_variables, func))
-    MOI.set(model.cont_optimizer, attr, _map(model.cont_variables, func))
+    MOI.set(_mip(model), attr, _map(model.mip_variables, func))
+    MOI.set(_cont(model), attr, _map(model.cont_variables, func))
 end
 function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction{SQF}, func::SQF)
     # We make a copy (as the user might modify it) and canonicalize
     # (as we're going to use it many times so it will be worth it to remove some duplicates).
     model.objective = MOI.Utilities.canonical(func)
-    MOI.set(model.cont_optimizer, attr, _map(model.cont_variables, func))
+    MOI.set(_cont(model), attr, _map(model.cont_variables, func))
 end
 
 
@@ -268,6 +276,22 @@ end
 MOI.supports(::Optimizer, param::MOI.RawParameter) = Symbol(param.name) in fieldnames(Optimizer)
 function MOI.set(model::Optimizer, param::MOI.RawParameter, value)
     setproperty!(model, Symbol(param.name), value)
+end
+MOI.supports(::Optimizer, ::MOI.Silent) = true
+function MOI.set(model::Optimizer, ::MOI.Silent, value::Bool)
+    model.silent = value
+end
+MOI.get(model::Optimizer, ::MOI.Silent) = model.silent
+MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = true
+function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value::Nothing)
+    MOI.set(model, MOI.RawParameter("timeout"), Inf)
+end
+function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value)
+    MOI.set(model, MOI.RawParameter("timeout"), value)
+end
+function MOI.get(model::Optimizer, ::MOI.TimeLimitSec)
+    value = MOI.get(model, MOI.RawParameter("timeout"))
+    return isfinite(value) ? value : nothing
 end
 
 MOI.get(model::Optimizer, ::MOI.SolveTime) = model.total_time

@@ -31,6 +31,7 @@ tol_feas = 1e-7
 tol_gap = 0.0
 
 include("solvers.jl")
+include("MOI_wrapper.jl")
 
 # run tests
 @testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false] #, true]

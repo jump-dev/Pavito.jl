@@ -37,9 +37,9 @@ function eval_objective_gradient(model::Optimizer, grad_f, values)
 end
 
 function MOI.optimize!(model::Optimizer)
-    if isempty(model.int_indices)
-        error("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
-    end
+#    if isempty(model.int_indices)
+#        error("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
+#    end
 
     if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
         if model.θ === nothing
@@ -62,7 +62,7 @@ function MOI.optimize!(model::Optimizer)
     model.objective_value = is_max ? -Inf :  Inf
     model.objective_bound = is_max ?  Inf : -Inf
 
-    if model.log_level > 0
+    if !model.silent && model.log_level > 0
         println("\nMINLP has a ", ((model.nlp_block !== nothing && model.nlp_block.has_objective) ? "nonlinear" : (model.objective isa SQF ? "quadratic" : "linear")), " objective, $(length(model.cont_variables)) variables ($(length(model.int_indices)) integer), $(model.nlp_block === nothing ? 0 : length(model.nlp_block.constraint_bounds)) nonlinear constraints, $(length(model.quad_less_than) + length(model.quad_greater_than)) quadratic constraints.")
         println("\nPavito started, using ", (model.mip_solver_drives ? "MIP-solver-driven" : "iterative"), " method...")
     end
@@ -84,6 +84,8 @@ function MOI.optimize!(model::Optimizer)
     ini_nlp_status = MOI.get(model.cont_optimizer, MOI.TerminationStatus())
     if ini_nlp_status in [MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_OPTIMAL]
         cont_solution = MOI.get(model.cont_optimizer, MOI.VariablePrimal(), model.cont_variables)
+        model.objective_value = MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
+        copyto!(model.incumbent, cont_solution)
         add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max)
     else
         if ini_nlp_status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE, MOI.ALMOST_INFEASIBLE]
@@ -230,7 +232,7 @@ function MOI.optimize!(model::Optimizer)
 
     # finish
     model.total_time = time() - start
-    if model.log_level > 0
+    if !model.silent && model.log_level > 0
         println("\nPavito finished...\n")
         @printf "Status           %13s\n" model.status
         @printf "Objective value  %13.5f\n" model.objective_value
@@ -521,7 +523,7 @@ end
 
 # print objective gap information for iterative
 function printgap(model::Optimizer, start)
-    if model.log_level >= 1
+    if !model.silent && model.log_level >= 1
         if (model.num_iters_or_callbacks == 1) || (model.log_level >= 2)
             @printf "\n%-5s | %-14s | %-14s | %-11s | %-11s\n" "Iter." "Best feasible" "Best bound" "Rel. gap" "Time (s)"
         end
