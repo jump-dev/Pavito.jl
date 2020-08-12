@@ -89,21 +89,15 @@ function MOI.empty!(model::Optimizer)
     model.objective = nothing
     model.quad_less_than = Tuple{SQF, MOI.LessThan{Float64}}[]
     model.quad_greater_than = Tuple{SQF, MOI.GreaterThan{Float64}}[]
-    model.status = MOI.OPTIMIZE_NOT_CALLED
     model.incumbent = Float64[]
-    model.new_incumb = false
-    model.total_time = 0.0
-    model.objective_value = NaN
-    model.objective_bound = NaN
-    model.objective_gap = Inf
-    model.num_iters_or_callbacks = 0
+    model.status = MOI.OPTIMIZE_NOT_CALLED
     return
 end
 
 MOI.Utilities.supports_default_copy_to(::Optimizer, copy_names::Bool) = !copy_names
 
 function MOI.copy_to(model::Optimizer, src::MOI.ModelLike; copy_names = false)
-    return MOI.Utilities.default_copy_to(model, src; copy_names)
+    return MOI.Utilities.default_copy_to(model, src, copy_names)
 end
 
 function _mip(model::Optimizer)
@@ -170,6 +164,7 @@ function clean_slacks(model::Optimizer)
     end
 end
 
+MOI.get(model::Optimizer, ::MOI.NumberOfVariables) = length(model.incumbent)
 function MOI.add_variable(model::Optimizer)
     push!(model.mip_variables, MOI.add_variable(_mip(model)))
     push!(model.cont_variables, MOI.add_variable(_cont(model)))
@@ -195,7 +190,7 @@ end
 _map(variables::Vector{MOI.VariableIndex}, x) = MOI.Utilities.map_indices(vi -> variables[vi.value], x)
 
 is_discrete(::Type{<:MOI.AbstractSet}) = false
-is_discrete(::Type{<:Union{MOI.Integer, MOI.ZeroOne}}) = true
+is_discrete(::Type{<:Union{MOI.Integer, MOI.ZeroOne, MOI.Semiinteger{Float64}}}) = true
 function MOI.supports_constraint(model::Optimizer, F::Type{MOI.SingleVariable}, S::Type{<:MOI.AbstractScalarSet})
     return MOI.supports_constraint(_mip(model), F, S) &&
         (is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
@@ -209,6 +204,7 @@ function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI
     end
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
+
 function MOI.supports_constraint(model::Optimizer, F::Type{SQF}, S::Type{<:Union{MOI.LessThan{Float64}, MOI.GreaterThan{Float64}}})
     return MOI.supports_constraint(_cont(model), F, S)
 end
@@ -224,6 +220,10 @@ function MOI.add_constraint(model::Optimizer, func::SQF, set::MOI.GreaterThan{Fl
     push!(model.quad_greater_than, (MOI.Utilities.canonical(func), copy(set)))
     return MOI.ConstraintIndex{typeof(func), typeof(set)}(length(model.quad_greater_than))
 end
+function MOI.get(model::Optimizer, attr::MOI.NumberOfConstraints{SQF, <:Union{MOI.LessThan{Float64}, MOI.GreaterThan{Float64}}})
+    return MOI.get(_cont(model), attr)
+end
+
 function MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.AbstractFunction}, S::Type{<:MOI.AbstractSet})
     return MOI.supports_constraint(_mip(model), F, S) && MOI.supports_constraint(_cont(model), F, S)
 end
@@ -232,6 +232,10 @@ function MOI.add_constraint(model::Optimizer, func::MOI.AbstractFunction, set::M
     MOI.add_constraint(_infeasible(model), _map(model.infeasible_variables, func), set)
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
+function MOI.get(model::Optimizer, attr::MOI.NumberOfConstraints)
+    return MOI.get(_mip(model), attr)
+end
+
 MOI.supports(::Optimizer, ::MOI.NLPBlock) = true
 function MOI.set(model::Optimizer, attr::MOI.NLPBlock, block::MOI.NLPBlockData)
     clean_slacks(model)

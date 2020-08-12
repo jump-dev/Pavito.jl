@@ -45,8 +45,7 @@ end
 # NLP solvers
 cont_solvers = Dict{String, MOI.OptimizerWithAttributes}()
 if ipt
-    # We add a cache because of https://github.com/jump-dev/Ipopt.jl/issues/211
-    cont_solvers["Ipopt"] = MOI.OptimizerWithAttributes(() -> MOIU.CachingOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()), MOI.instantiate(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))))
+    cont_solvers["Ipopt"] = optimizer_with_attributes(Ipopt.Optimizer, MOI.Silent() => true)
 end
 if kni
     cont_solvers["Knitro"] = optimizer_with_attributes(KNITRO.Optimizer, "objrange" => 1e16, "outlev" => 0, "maxit" => 100000)
