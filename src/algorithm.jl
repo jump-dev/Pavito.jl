@@ -91,6 +91,7 @@ function MOI.optimize!(model::Optimizer)
     MOI.optimize!(model.cont_optimizer)
     nlp_time += time() - start_nlp
     ini_nlp_status = MOI.get(model.cont_optimizer, MOI.TerminationStatus())
+    cont_solution = nothing
     if ini_nlp_status in [MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_OPTIMAL]
         cont_solution = MOI.get(model.cont_optimizer, MOI.VariablePrimal(), model.cont_variables)
         cont_obj = MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
@@ -118,7 +119,7 @@ function MOI.optimize!(model::Optimizer)
     end
     flush(stdout)
 
-    if MOI.supports(model.mip_optimizer, MOI.VariablePrimalStart(), MOI.VariableIndex) && all(isfinite, cont_solution)
+    if cont_solution !== nothing && MOI.supports(model.mip_optimizer, MOI.VariablePrimalStart(), MOI.VariableIndex) && all(isfinite, cont_solution)
         MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.mip_variables, cont_solution)
 
         if model.θ !== nothing
@@ -136,15 +137,15 @@ function MOI.optimize!(model::Optimizer)
             model.num_iters_or_callbacks += 1
 
             # if integer assignment has been seen before, use cached point
-            mip_solution = MOI.get(model.mip_optimizer, MOI.CallbackVariablePrimal(cb), model.mip_variables)
-            round_mipsol = round.(mip_solution)
+            model.mip_solution = MOI.get(model.mip_optimizer, MOI.CallbackVariablePrimal(cb), model.mip_variables)
+            round_mipsol = round.(model.mip_solution)
             if haskey(cache_contsol, round_mipsol)
                 # retrieve existing solution
                 cont_solution = cache_contsol[round_mipsol]
             else
                 # try to solve new subproblem, update incumbent solution if feasible
                 start_nlp = time()
-                cont_solution = solve_subproblem(model, mip_solution, comp)
+                cont_solution = solve_subproblem(model, comp)
                 nlp_time += time() - start_nlp
                 cache_contsol[round_mipsol] = cont_solution
             end
@@ -207,7 +208,7 @@ function MOI.optimize!(model::Optimizer)
                 model.status = mip_status
                 break
             end
-            mip_solution = MOI.get(model.mip_optimizer, MOI.VariablePrimal(), model.mip_variables)
+            model.mip_solution = MOI.get(model.mip_optimizer, MOI.VariablePrimal(), model.mip_variables)
 
             # update best bound from MIP bound
             mip_obj_bound = MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
@@ -217,15 +218,15 @@ function MOI.optimize!(model::Optimizer)
 
             update_gap(model, is_max)
             printgap(model, start)
-            check_progress(model, prev_mip_solution, mip_solution) && break
+            check_progress(model, prev_mip_solution) && break
 
             # try to solve new subproblem, update incumbent solution if feasible
             start_nlp = time()
-            cont_solution = solve_subproblem(model, mip_solution, comp)
+            cont_solution = solve_subproblem(model, comp)
             nlp_time += time() - start_nlp
 
             update_gap(model, is_max)
-            check_progress(model, prev_mip_solution, mip_solution) && break
+            check_progress(model, prev_mip_solution) && break
 
             # add gradient cuts to MIP model from NLP solution
             if all(isfinite, cont_solution)
@@ -237,7 +238,7 @@ function MOI.optimize!(model::Optimizer)
 
             # TODO warmstart MIP from upper bound as MPB's version
 
-            prev_mip_solution = mip_solution
+            prev_mip_solution = model.mip_solution
             flush(stdout)
         end
     end
@@ -276,14 +277,14 @@ function update_gap(model::Optimizer, is_max::Bool)
     end
 end
 
-function check_progress(model::Optimizer, prev_mip_solution, mip_solution)
+function check_progress(model::Optimizer, prev_mip_solution)
     # finish if optimal or cycling integer solutions
     int_ind = collect(model.int_indices)
     if model.objective_gap <= model.rel_gap
         model.status = MOI.OPTIMAL
         return true
-    elseif round.(prev_mip_solution[int_ind]) == round.(mip_solution[int_ind])
-        @warn "mixed-integer cycling detected ($(round.(prev_mip_solution[int_ind])) == $(round.(mip_solution[int_ind]))), terminating Pavito"
+    elseif round.(prev_mip_solution[int_ind]) == round.(model.mip_solution[int_ind])
+        @warn "mixed-integer cycling detected ($(round.(prev_mip_solution[int_ind])) == $(round.(model.mip_solution[int_ind]))), terminating Pavito"
         if isfinite(model.objective_gap)
             model.status = MOI.ALMOST_OPTIMAL
         else
@@ -315,8 +316,8 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
 end
 
 # solve NLP subproblem defined by integer assignment
-function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
-    fix_int_vars(model.cont_optimizer, model.cont_variables, mip_solution, model.int_indices)
+function solve_subproblem(model::Optimizer, comp::Function)
+    fix_int_vars(model.cont_optimizer, model.cont_variables, model.mip_solution, model.int_indices)
     MOI.optimize!(model.cont_optimizer)
     if MOI.get(model.cont_optimizer, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT
         # subproblem is feasible, check if solution is new incumbent
@@ -383,13 +384,13 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
         MOI.set(_infeasible(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
     end
 
-    fix_int_vars(model.infeasible_optimizer, model.infeasible_variables, mip_solution, model.int_indices)
-    MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.infeasible_variables, mip_solution)
+    fix_int_vars(model.infeasible_optimizer, model.infeasible_variables, model.mip_solution, model.int_indices)
+    MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.infeasible_variables, model.mip_solution)
 
     if model.nlp_block !== nothing && !isempty(model.nlp_block.constraint_bounds)
         fill!(model.infeasible_evaluator.minus, false)
         g = zeros(length(model.nlp_block.constraint_bounds))
-        MOI.eval_constraint(model.nlp_block.evaluator, g, mip_solution)
+        MOI.eval_constraint(model.nlp_block.evaluator, g, model.mip_solution)
 
         for i in eachindex(model.nlp_block.constraint_bounds)
             bounds = model.nlp_block.constraint_bounds[i]
@@ -400,12 +401,12 @@ function solve_subproblem(model::Optimizer, mip_solution, comp::Function)
     end
 
     for i in eachindex(model.quad_less_than)
-        val = eval_func(mip_solution, model.quad_less_than[i][1]) - model.quad_less_than[i][2].upper
+        val = eval_func(model.mip_solution, model.quad_less_than[i][1]) - model.quad_less_than[i][2].upper
         MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.quad_less_than_slack_variables[i], max(0.0, val))
     end
 
     for i in eachindex(model.quad_greater_than)
-        val = model.quad_greater_than[i][2].lower - eval_func(mip_solution, model.quad_greater_than[i][1])
+        val = model.quad_greater_than[i][2].lower - eval_func(model.mip_solution, model.quad_greater_than[i][1])
         MOI.set(_infeasible(model), MOI.VariablePrimalStart(), model.quad_greater_than_slack_variables[i], max(0.0, val))
     end
 
@@ -448,10 +449,9 @@ function add_cut(model::Optimizer, cont_solution, gc, dgc_idx, dgc_nzv, set, cal
         if callback_data === nothing
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
-            MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
+            _lazy_constraint(model, callback_data, func, set, model.mip_solution)
         end
     end
-
 end
 
 function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
@@ -527,11 +527,28 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
         if callback_data === nothing
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
-            MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
+            θ = MOI.get(model.mip_optimizer, MOI.CallbackVariablePrimal(callback_data), model.θ)
+            _lazy_constraint(model, callback_data, func, set, [model.mip_solution; θ])
         end
     end
 
     return
+end
+
+# `isapprox(0.0, 1e-16)` is false but `_is_approx(0.0, 1e-16)` is true.
+_is_approx(x, y) = isapprox(x, y, atol=Base.rtoldefault(Float64))
+approx_in(value, set::MOI.EqualTo)     = _is_approx(value, MOI.constant(set))
+approx_in(value, set::MOI.LessThan)    = _is_approx(value, MOI.constant(set)) || value < MOI.constant(set)
+approx_in(value, set::MOI.GreaterThan) = _is_approx(value, MOI.constant(set)) || value > MOI.constant(set)
+
+function _lazy_constraint(model, callback_data, func, set, mip_solution)
+    # GLPK does not check whether the new cut is redundant or not
+    # so we should filter it out ourself:
+    # See https://github.com/jump-dev/GLPK.jl/issues/153
+    if approx_in(eval_func(mip_solution, func), set)
+        return
+    end
+    MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data), func, set)
 end
 
 # print objective gap information for iterative

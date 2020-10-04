@@ -47,6 +47,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     status::MOI.TerminationStatusCode # Termination status to be returned
     incumbent::Vector{Float64}        # Starting values set and then current best nonlinear feasible solution
     new_incumb::Bool                  # `true` if a better nonlinear feasible solution was found
+    mip_solution::Vector{Float64}     # MIP solution cached for used to check redundancy of Lazy Constraint
     total_time::Float64               # Total solve time
     objective_value::Float64          # Objective value corresponding to `incumbent`
     objective_bound::Float64          # Best objective bound found by MILP
