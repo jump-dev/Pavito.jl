@@ -34,7 +34,7 @@ include("solvers.jl")
 include("MOI_wrapper.jl")
 
 # run tests
-@testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false] #, true]
+@testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false, true]
     @testset "MILP solver - $mipname" for (mipname, mip) in mip_solvers
         if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
             # Only test MSD on lazy callback solvers
