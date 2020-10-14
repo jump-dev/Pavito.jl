@@ -1,7 +1,7 @@
 name = "Pavito"
 uuid = "cd433a01-47d1-575d-afb7-6db927ee8d8f"
-repo = "https://github.com/JuliaOpt/Pavito.jl.git"
-version = "0.2.0"
+repo = "https://github.com/jump-dev/Pavito.jl.git"
+version = "0.3.0"
 
 [deps]
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
@@ -11,7 +11,7 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 GLPK = "0.13.0"
 Ipopt = "0.6.2"
 JuMP = "0.21.2"
-MathOptInterface = "0.9.14"
+MathOptInterface = "0.9.17"
 julia = "1"
 
 [extras]
