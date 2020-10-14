@@ -138,6 +138,17 @@ function MOI.optimize!(model::Optimizer)
 
             # if integer assignment has been seen before, use cached point
             model.mip_solution = MOI.get(model.mip_optimizer, MOI.CallbackVariablePrimal(cb), model.mip_variables)
+            if any(i -> abs(model.mip_solution[i] - round(model.mip_solution[i])) > 1e-5, model.int_indices)
+                # The solution is integer-infeasible, the `1e-5` was chosen for backward
+                # compatibility as this filter used to be done by JuMP:
+                # https://github.com/JuliaOpt/GLPKMathProgInterface.jl/blob/26f755770f8b70a81ade83cd1e6d85fa8c8254c9/src/GLPKInterfaceMIP.jl#L103
+                # For more details, see
+                # https://github.com/jump-dev/GLPK.jl/issues/146
+                # and
+                # https://github.com/jump-dev/MathOptInterface.jl/pull/1172
+                @warn "Solver called a lazy callback with an integer-infeasible solution"
+                return
+            end
             round_mipsol = round.(model.mip_solution)
             if haskey(cache_contsol, round_mipsol)
                 # retrieve existing solution

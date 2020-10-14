@@ -42,7 +42,7 @@ const CONFIG = MOIT.TestConfig(atol=1e-6, rtol=1e-6, duals=false, query=false)
              "int2", "indicator1", "indicator2", "indicator3", "indicator4"
         ]
         if msd
-            # See https://github.com/jump-dev/GLPK.jl/issues/146
+            # GLPK has an integer-infeasible solution
             push!(excludes, "knapsack")
         end
         MOIT.intlineartest(optimizer, CONFIG, excludes)
