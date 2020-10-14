@@ -5,7 +5,7 @@
 #############################################################################
 # JuMP
 # An algebraic modelling langauge for Julia
-# See http://github.com/JuliaOpt/JuMP.jl
+# See http://github.com/jump-dev/JuMP.jl
 #############################################################################
 # test/solvers.jl
 # Detect and load solvers

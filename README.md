@@ -36,13 +36,13 @@ JuMP and Convex.jl are algebraic modeling interfaces, while MathOptInterface is 
 
 The algorithm implemented by Pavito itself is relatively simple, and most of the hard work is performed by the MILP solver and the NLP solver. **The performance of Pavito depends on these two types of solvers.**
 
-The mixed-integer solver is specified by using the `mip_solver` option to `PavitoSolver`, e.g. `PavitoSolver(mip_solver=CplexSolver())`. You must first load the Julia package which provides the mixed-integer solver, e.g. `using CPLEX`. The continuous derivative-based nonlinear solver (e.g. [Ipopt](https://projects.coin-or.org/Ipopt) or [KNITRO](http://www.ziena.com/knitro.htm)) is specified by using the `cont_solver` option, e.g. `PavitoSolver(cont_solver=IpoptSolver())`.
+The mixed-integer solver is specified by using the `mip_solver` option to `Pavito.Optimizer`, e.g. `optimizer_with_attributes(Pavito.Optimizer, "mip_solver" => CPLEX.Optimizer)`. You must first load the Julia package which provides the mixed-integer solver, e.g. `using CPLEX`. The continuous derivative-based nonlinear solver (e.g. [Ipopt](https://projects.coin-or.org/Ipopt) or [KNITRO](http://www.ziena.com/knitro.htm)) is specified by using the `cont_solver` option, e.g. `optimizer_with_attributes(Pavito.Optimizer, "cont_solver" => Ipopt.Optimizer)`.
 
-MIP and continuous solver parameters must be specified through their corresponding Julia interfaces. For example, to turn off the output of Ipopt solver, use `cont_solver=IpoptSolver(print_level=0)`.
+MIP and continuous solver parameters must be specified through their corresponding Julia interfaces. For example, to turn off the output of Ipopt solver, use `"cont_solver" => optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)`.
 
 ## Pavito solver options
 
-The following options can be passed to `PavitoSolver()` to modify its behavior:
+The following optimizer attributes can set to a `Pavito.Optimizer` to modify its behavior:
 
   * `log_level::Int` Verbosity flag: 0 for quiet, higher for basic solve info
   * `timeout::Float64` Time limit for algorithm (in seconds)
