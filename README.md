@@ -6,7 +6,7 @@ Pavito is a **mixed-integer convex programming** (MICP) solver package written i
 
 Pavito solves MICP problems by constructing sequential polyhedral outer-approximations of the convex feasible set, similar to [Bonmin](https://projects.coin-or.org/Bonmin). Pavito accesses state-of-the-art MILP solvers and continuous, derivative-based nonlinear programming (NLP) solvers through the MathOptInterface interface.
 
-For algorithms that use a conic solver instead of an NLP solver, use [Pajarito](https://github.com/jump-dev/Pajarito.jl). Pajarito is a robust mixed-integer conic solver that can handle such established problem classes as mixed-integer second-order cone programming (MISOCP) and mixed-integer semidefinite programming (MISDP).
+For algorithms that use a conic solver instead of an NLP solver, use [Pajarito](https://github.com/JuliaOpt/Pajarito.jl). Pajarito is a robust mixed-integer conic solver that can handle such established problem classes as mixed-integer second-order cone programming (MISOCP) and mixed-integer semidefinite programming (MISDP).
 
 ## Installation
 
