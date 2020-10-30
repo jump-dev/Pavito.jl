@@ -125,9 +125,6 @@ function _new_cont(optimizer_constructor)
     end
 
     optimizer = MOI.instantiate(optimizer_constructor, with_bridge_type=Float64)
-    if !MOI.supports(optimizer, MOI.NLPBlock())
-        error("Continuous solver (`cont_solver`) specified is not a derivative-based NLP solver recognized by MathOptInterface (try Pajarito solver if your continuous solver is conic)\n")
-    end
     return optimizer
 end
 
@@ -241,6 +238,9 @@ MOI.supports(::Optimizer, ::MOI.NLPBlock) = true
 function MOI.set(model::Optimizer, attr::MOI.NLPBlock, block::MOI.NLPBlockData)
     clean_slacks(model)
     model.nlp_block = block
+    if !MOI.supports(_cont(model), MOI.NLPBlock())
+        error("Continuous solver (`cont_solver`) specified is not a derivative-based NLP solver recognized by MathOptInterface (try Pajarito solver if your continuous solver is conic)\n")
+    end
     MOI.set(_cont(model), attr, block)
 end
 
