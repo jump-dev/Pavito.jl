@@ -1,4 +1,5 @@
-[![Build Status](https://travis-ci.com/jump-dev/Pavito.jl.svg?branch=master)](https://travis-ci.com/jump-dev/Pavito.jl) [![codecov](https://codecov.io/gh/jump-dev/Pavito.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jump-dev/Pavito.jl)
+[![Build Status](https://github.com/jump-dev/DiffOpt.jl/workflows/CI/badge.svg)](https://github.com/jump-dev/DiffOpt.jl/actions)
+[![Coverage](https://codecov.io/gh/jump-dev/DiffOpt.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jump-dev/DiffOpt.jl)
 
 # Pavito
 
@@ -11,8 +12,10 @@ For algorithms that use a conic solver instead of an NLP solver, use [Pajarito](
 ## Installation
 
 Pavito can be installed through the Julia package manager:
+
 ```
-julia> Pkg.add("Pavito")
+julia> ]
+pkg> Pkg.add("Pavito")
 ```
 
 ## Usage
@@ -30,15 +33,21 @@ There are several convenient ways to model MICPs in Julia and access Pavito:
 [convex-url]: https://github.com/jump-dev/Convex.jl
 [moi-url]: https://github.com/jump-dev/MathOptInterface.jl
 
-JuMP and Convex.jl are algebraic modeling interfaces, while MathOptInterface is a lower-level interface for providing input in raw callback or matrix form. Convex.jl is perhaps the most user-friendly way to provide input in conic form, since it transparently handles conversion of algebraic expressions. JuMP supports general nonlinear smooth functions, e.g. by using `@NLconstraint`. JuMP also supports conic modeling, but requires cones to be explicitly specified, e.g. by using `norm(x) <= t` for second-order cone constraints. Pavito may be accessed through MathOptInterface from outside Julia by using the experimental [cmpb](https://github.com/mlubin/cmpb) interface which provides a C API to the low-level conic input format. The [ConicBenchmarkUtilities](https://github.com/mlubin/ConicBenchmarkUtilities.jl) package provides utilities to read files in the [CBF](http://cblib.zib.de/) format.
+JuMP and Convex.jl are algebraic modeling interfaces, while MathOptInterface is a lower-level interface for providing input in raw callback or matrix form.
+Convex.jl is perhaps the most user-friendly way to provide input in conic form, since it transparently handles conversion of algebraic expressions.
+JuMP supports general nonlinear smooth functions, e.g. by using `@NLconstraint`. JuMP also supports conic modeling, but requires cones to be explicitly specified, e.g. by using `norm(x) <= t` for second-order cone constraints.
 
 ## MIP and continuous solvers
 
-The algorithm implemented by Pavito itself is relatively simple, and most of the hard work is performed by the MILP solver and the NLP solver. **The performance of Pavito depends on these two types of solvers.**
+The algorithm implemented by Pavito itself is relatively simple, and most of the hard work is performed by the MILP solver and the NLP solver.
+**The performance of Pavito depends on these two types of solvers.**
 
-The mixed-integer solver is specified by using the `mip_solver` option to `Pavito.Optimizer`, e.g. `optimizer_with_attributes(Pavito.Optimizer, "mip_solver" => CPLEX.Optimizer)`. You must first load the Julia package which provides the mixed-integer solver, e.g. `using CPLEX`. The continuous derivative-based nonlinear solver (e.g. [Ipopt](https://projects.coin-or.org/Ipopt) or [KNITRO](http://www.ziena.com/knitro.htm)) is specified by using the `cont_solver` option, e.g. `optimizer_with_attributes(Pavito.Optimizer, "cont_solver" => Ipopt.Optimizer)`.
+The mixed-integer solver is specified by using the `mip_solver` option to `Pavito.Optimizer`, e.g. `optimizer_with_attributes(Pavito.Optimizer, "mip_solver" => CPLEX.Optimizer)`.
+You must first load the Julia package which provides the mixed-integer solver, e.g. `using CPLEX`.
+The continuous derivative-based nonlinear solver (e.g. [Ipopt](https://projects.coin-or.org/Ipopt) or [KNITRO](https://www.artelys.com/solvers/knitro/)) is specified by using the `cont_solver` option, e.g. `optimizer_with_attributes(Pavito.Optimizer, "cont_solver" => Ipopt.Optimizer)`.
 
-MIP and continuous solver parameters must be specified through their corresponding Julia interfaces. For example, to turn off the output of Ipopt solver, use `"cont_solver" => optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)`.
+MIP and continuous solver parameters must be specified through their corresponding Julia interfaces.
+For example, to turn off the output of Ipopt solver, use `"cont_solver" => optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)`.
 
 ## Pavito solver options
 
@@ -51,7 +60,9 @@ The following optimizer attributes can set to a `Pavito.Optimizer` to modify its
   * `mip_solver::MathOptInterface.AbstractMathProgSolver` MILP solver
   * `cont_solver::MathOptInterface.AbstractMathProgSolver` Continuous NLP solver
 
-**Pavito is not yet numerically robust and may require tuning of parameters to improve convergence.** If the default parameters don't work for you, please let us know. For improved Pavito performance, MILP solver integrality tolerance and feasibility tolerances should typically be tightened, for example to `1e-8`.
+**Pavito is not yet numerically robust and may require tuning of parameters to improve convergence.**
+If the default parameters don't work for you, please let us know.
+For improved Pavito performance, MILP solver integrality tolerance and feasibility tolerances should typically be tightened, for example to `1e-8`.
 
 ## Bug reports and support
 
