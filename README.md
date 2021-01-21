@@ -35,7 +35,7 @@ There are several convenient ways to model MICPs in Julia and access Pavito:
 
 JuMP and Convex.jl are algebraic modeling interfaces, while MathOptInterface is a lower-level interface for providing input in raw callback or matrix form.
 Convex.jl is perhaps the most user-friendly way to provide input in conic form, since it transparently handles conversion of algebraic expressions.
-JuMP supports general nonlinear smooth functions, e.g. by using `@NLconstraint`. JuMP also supports conic modeling, but requires cones to be explicitly specified, e.g. by using `norm(x) <= t` for second-order cone constraints.
+JuMP supports general nonlinear smooth functions, e.g. by using `@NLconstraint`. JuMP also supports conic modeling, but requires cones to be explicitly specified, e.g. by using `@constraint(model, [t; x] in SecondOrderCone())` for second-order cone constraints.
 
 ## MIP and continuous solvers
 
