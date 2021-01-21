@@ -1,5 +1,5 @@
-[![Build Status](https://github.com/jump-dev/DiffOpt.jl/workflows/CI/badge.svg)](https://github.com/jump-dev/DiffOpt.jl/actions)
-[![Coverage](https://codecov.io/gh/jump-dev/DiffOpt.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jump-dev/DiffOpt.jl)
+[![Build Status](https://github.com/jump-dev/Pavito.jl/workflows/CI/badge.svg)](https://github.com/jump-dev/Pavito.jl/actions)
+[![Coverage](https://codecov.io/gh/jump-dev/Pavito.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jump-dev/Pavito.jl)
 
 # Pavito
 
@@ -15,7 +15,7 @@ Pavito can be installed through the Julia package manager:
 
 ```
 julia> ]
-pkg> Pkg.add("Pavito")
+pkg> add Pavito
 ```
 
 ## Usage
