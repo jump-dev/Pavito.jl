@@ -17,14 +17,14 @@ end
 function eval_gradient(func::SQF, grad_f, values)
     fill!(grad_f, 0.0)
     for term in func.affine_terms
-        grad_f[term.variable_index.value] += term.coefficient
+        grad_f[term.variable.value] += term.coefficient
     end
     for term in func.quadratic_terms
-        grad_f[term.variable_index_1.value] += term.coefficient * values[term.variable_index_2.value]
+        grad_f[term.variable_1.value] += term.coefficient * values[term.variable_2.value]
         # If variables are the same, the coefficient is already multiplied by 2
         # 2 by definition of `SQF`.
-        if term.variable_index_1 != term.variable_index_2
-            grad_f[term.variable_index_2.value] += term.coefficient * values[term.variable_index_1.value]
+        if term.variable_1 != term.variable_2
+            grad_f[term.variable_2.value] += term.coefficient * values[term.variable_1.value]
         end
     end
 end
@@ -53,8 +53,7 @@ function MOI.optimize!(model::Optimizer)
     if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
         if model.θ === nothing
             model.θ = MOI.add_variable(model.mip_optimizer)
-            func = MOI.SingleVariable(model.θ)
-            MOI.set(model.mip_optimizer, MOI.ObjectiveFunction{typeof(func)}(), func)
+            MOI.set(model.mip_optimizer, MOI.ObjectiveFunction{typeof(model.θ)}(), model.θ)
         end
     else
         if model.θ !== nothing
@@ -310,18 +309,17 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
     for i in int_indices
         vi = vars[i]
         idx = vi.value
-        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.LessThan{Float64}}(idx)
+        ci = MOI.ConstraintIndex{MOI.VariableIndex, MOI.LessThan{Float64}}(idx)
         MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
-        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.GreaterThan{Float64}}(idx)
+        ci = MOI.ConstraintIndex{MOI.VariableIndex, MOI.GreaterThan{Float64}}(idx)
         MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
-        ci = MOI.ConstraintIndex{MOI.SingleVariable, MOI.EqualTo{Float64}}(idx)
+        ci = MOI.ConstraintIndex{MOI.VariableIndex, MOI.EqualTo{Float64}}(idx)
         set = MOI.EqualTo(mip_solution[i])
 
         if MOI.is_valid(optimizer, ci)
             MOI.set(optimizer, MOI.ConstraintSet(), ci, set)
         else
-            func = MOI.SingleVariable(vi)
-            MOI.add_constraint(optimizer, func, set)
+            MOI.add_constraint(optimizer, vi, set)
         end
     end
 end
@@ -376,7 +374,7 @@ function solve_subproblem(model::Optimizer, comp::Function)
             model.quad_less_than_slack_variables = MOI.add_variables(_infeasible(model), length(model.quad_less_than))
             model.quad_less_than_infeasible_con = map(eachindex(model.quad_less_than)) do i
                 func, set = model.quad_less_than[i]
-                MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(-, Float64, func, MOI.SingleVariable(model.quad_less_than_slack_variables[i])), set)
+                MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(-, Float64, func, model.quad_less_than_slack_variables[i]), set)
             end
             for vi in model.quad_less_than_slack_variables
                 _add_to_obj(vi)
@@ -386,7 +384,7 @@ function solve_subproblem(model::Optimizer, comp::Function)
             model.quad_greater_than_slack_variables = MOI.add_variables(_infeasible(model), length(model.quad_greater_than))
             model.quad_greater_than_infeasible_con = map(eachindex(model.quad_greater_than)) do i
                 func, set = model.quad_greater_than[i]
-                MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(+, Float64, func, MOI.SingleVariable(model.quad_greater_than_slack_variables[i])), set)
+                MOI.add_constraint(_infeasible(model), MOI.Utilities.operate(+, Float64, func, model.quad_greater_than_slack_variables[i]), set)
             end
             for vi in model.quad_greater_than_slack_variables
                 _add_to_obj(vi)
@@ -471,17 +469,17 @@ function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
         dgc_idx = Int64[]
         dgc_nzv = Float64[]
         for term in func.affine_terms
-            push!(dgc_idx, term.variable_index.value)
+            push!(dgc_idx, term.variable.value)
             push!(dgc_nzv, term.coefficient)
         end
         for term in func.quadratic_terms
-            push!(dgc_idx, term.variable_index_1.value)
-            push!(dgc_nzv, term.coefficient * cont_solution[term.variable_index_2.value])
+            push!(dgc_idx, term.variable_1.value)
+            push!(dgc_nzv, term.coefficient * cont_solution[term.variable_2.value])
             # If variables are the same, the coefficient is already multiplied by 2
             # 2 by definition of `SQF`.
-            if term.variable_index_1 != term.variable_index_2
-                push!(dgc_idx, term.variable_index_2.value)
-                push!(dgc_nzv, term.coefficient * cont_solution[term.variable_index_1.value])
+            if term.variable_1 != term.variable_2
+                push!(dgc_idx, term.variable_2.value)
+                push!(dgc_nzv, term.coefficient * cont_solution[term.variable_1.value])
             end
         end
         add_cut(model, cont_solution, gc, dgc_idx, dgc_nzv, set, callback_data)
@@ -527,7 +525,7 @@ function add_cuts(model::Optimizer, cont_solution, jac_IJ, jac_V, grad_f, is_max
         f = eval_objective(model, cont_solution)
         eval_objective_gradient(model, grad_f, cont_solution)
         constant = -f
-        func = MOI.Utilities.operate(-, Float64, MOI.SingleVariable(model.θ))
+        func = MOI.Utilities.operate(-, Float64, model.θ)
         for j in eachindex(grad_f)
             if !iszero(grad_f[j])
                 constant += grad_f[j] * cont_solution[j]

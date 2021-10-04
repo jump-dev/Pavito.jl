@@ -6,7 +6,7 @@ const MOIT = MOI.Test
 
 import Pavito
 
-const CONFIG = MOIT.TestConfig(atol=1e-6, rtol=1e-6, duals=false, query=false)
+const CONFIG = MOIT.Config(Float64, atol=1e-6, rtol=1e-6, exclude=Any[MOI.ConstraintDual])
 
 @testset "MOI tests - $(msd ? "MSD" : "Iter")" for msd in [false, true]
     # The default for `diverging_iterates_tol` is `1e-20` which makes Ipopt terminates with `ITERATION_LIMIT` for most infeasible
