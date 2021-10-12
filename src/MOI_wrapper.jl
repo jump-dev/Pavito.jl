@@ -95,10 +95,10 @@ function MOI.empty!(model::Optimizer)
     return
 end
 
-MOI.Utilities.supports_default_copy_to(::Optimizer, copy_names::Bool) = !copy_names
+MOI.supports_incremental_interface(::Optimizer) = true
 
-function MOI.copy_to(model::Optimizer, src::MOI.ModelLike; copy_names = false)
-    return MOI.Utilities.default_copy_to(model, src, copy_names)
+function MOI.copy_to(model::Optimizer, src::MOI.ModelLike)
+    return MOI.Utilities.default_copy_to(model, src)
 end
 
 function _mip(model::Optimizer)
@@ -189,13 +189,13 @@ _map(variables::Vector{MOI.VariableIndex}, x) = MOI.Utilities.map_indices(vi -> 
 
 is_discrete(::Type{<:MOI.AbstractSet}) = false
 is_discrete(::Type{<:Union{MOI.Integer, MOI.ZeroOne, MOI.Semiinteger{Float64}}}) = true
-function MOI.supports_constraint(model::Optimizer, F::Type{MOI.SingleVariable}, S::Type{<:MOI.AbstractScalarSet})
+function MOI.supports_constraint(model::Optimizer, F::Type{MOI.VariableIndex}, S::Type{<:MOI.AbstractScalarSet})
     return MOI.supports_constraint(_mip(model), F, S) &&
         (is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
 end
-function MOI.add_constraint(model::Optimizer, func::MOI.SingleVariable, set::MOI.AbstractScalarSet)
+function MOI.add_constraint(model::Optimizer, func::MOI.VariableIndex, set::MOI.AbstractScalarSet)
     if is_discrete(typeof(set))
-        push!(model.int_indices, func.variable.value)
+        push!(model.int_indices, func.value)
     else
         MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
         MOI.add_constraint(_infeasible(model), _map(model.infeasible_variables, func), set)
@@ -275,11 +275,11 @@ function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction{SQF}, func::SQF)
 end
 
 
-function MOI.get(model::Optimizer, param::MOI.RawParameter)
+function MOI.get(model::Optimizer, param::MOI.RawOptimizerAttribute)
     return getproperty(model, Symbol(param.name))
 end
-MOI.supports(::Optimizer, param::MOI.RawParameter) = Symbol(param.name) in fieldnames(Optimizer)
-function MOI.set(model::Optimizer, param::MOI.RawParameter, value)
+MOI.supports(::Optimizer, param::MOI.RawOptimizerAttribute) = Symbol(param.name) in fieldnames(Optimizer)
+function MOI.set(model::Optimizer, param::MOI.RawOptimizerAttribute, value)
     setproperty!(model, Symbol(param.name), value)
 end
 MOI.supports(::Optimizer, ::MOI.Silent) = true
@@ -289,17 +289,17 @@ end
 MOI.get(model::Optimizer, ::MOI.Silent) = model.silent
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = true
 function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value::Nothing)
-    MOI.set(model, MOI.RawParameter("timeout"), Inf)
+    MOI.set(model, MOI.RawOptimizerAttribute("timeout"), Inf)
 end
 function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value)
-    MOI.set(model, MOI.RawParameter("timeout"), value)
+    MOI.set(model, MOI.RawOptimizerAttribute("timeout"), value)
 end
 function MOI.get(model::Optimizer, ::MOI.TimeLimitSec)
-    value = MOI.get(model, MOI.RawParameter("timeout"))
+    value = MOI.get(model, MOI.RawOptimizerAttribute("timeout"))
     return isfinite(value) ? value : nothing
 end
 
-MOI.get(model::Optimizer, ::MOI.SolveTime) = model.total_time
+MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.total_time
 
 MOI.get(model::Optimizer, ::MOI.TerminationStatus) = model.status
 function MOI.get(model::Optimizer, ::MOI.VariablePrimal, v::MOI.VariableIndex)
