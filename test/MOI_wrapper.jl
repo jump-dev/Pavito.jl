@@ -2,11 +2,10 @@ using Test
 
 #using MathOptInterface
 #const MOI = MathOptInterface
-const MOIT = MOI.Test
 
 import Pavito
 
-const CONFIG = MOIT.TestConfig(atol=1e-6, rtol=1e-6, duals=false, query=false)
+const CONFIG = MOI.DeprecatedTest.Config(atol=1e-6, rtol=1e-6, duals=false, query=false)
 
 @testset "MOI tests - $(msd ? "MSD" : "Iter")" for msd in [false, true]
     # The default for `diverging_iterates_tol` is `1e-20` which makes Ipopt terminates with `ITERATION_LIMIT` for most infeasible
@@ -20,16 +19,15 @@ const CONFIG = MOIT.TestConfig(atol=1e-6, rtol=1e-6, duals=false, query=false)
     end
 
     @testset "supports_default_copy_to" begin
-        @test MOI.Utilities.supports_default_copy_to(optimizer, false)
-        @test !MOI.Utilities.supports_default_copy_to(optimizer, true)
+        @test MOI.supports_incremental_interface(optimizer)
     end
 
     @testset "Unit" begin
-         MOIT.feasibility_sense(optimizer, CONFIG)
-         MOIT.max_sense(optimizer, CONFIG)
-         MOIT.min_sense(optimizer, CONFIG)
-         MOIT.time_limit_sec(optimizer, CONFIG)
-         MOIT.silent(optimizer, CONFIG)
+         MOI.DeprecatedTest.feasibility_sense(optimizer, CONFIG)
+         MOI.DeprecatedTest.max_sense(optimizer, CONFIG)
+         MOI.DeprecatedTest.min_sense(optimizer, CONFIG)
+         MOI.DeprecatedTest.time_limit_sec(optimizer, CONFIG)
+         MOI.DeprecatedTest.silent(optimizer, CONFIG)
     end
 
     @testset "Integer Linear" begin
@@ -45,6 +43,6 @@ const CONFIG = MOIT.TestConfig(atol=1e-6, rtol=1e-6, duals=false, query=false)
             # GLPK has an integer-infeasible solution
             push!(excludes, "knapsack")
         end
-        MOIT.intlineartest(optimizer, CONFIG, excludes)
+        MOI.DeprecatedTest.intlineartest(optimizer, CONFIG, excludes)
     end
 end
