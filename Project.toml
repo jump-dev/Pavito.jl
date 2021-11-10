@@ -1,7 +1,7 @@
 name = "Pavito"
 uuid = "cd433a01-47d1-575d-afb7-6db927ee8d8f"
 repo = "https://github.com/jump-dev/Pavito.jl.git"
-version = "0.3.1"
+version = "0.3.2"
 
 [deps]
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
