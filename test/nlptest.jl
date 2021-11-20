@@ -9,7 +9,11 @@
 =========================================================#
 
 # take a JuMP model and solve, redirecting output
-function solve_jump(testname, m, redirect)
+function solve_jump(
+    testname::String,
+    m::JuMP.Model,
+    redirect::Bool,
+)
     flush(stdout)
     flush(stderr)
     @printf "%-30s... " testname
@@ -56,8 +60,13 @@ function solve_jump(testname, m, redirect)
 end
 
 # quadratic program tests
-function run_qp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, redirect)
-    solver = optimizer_with_attributes(
+function run_qp(
+    mip_solver_drives::Bool,
+    mip_solver,
+    cont_solver,
+    redirect::Bool,
+)
+    solver = JuMP.optimizer_with_attributes(
         Pavito.Optimizer,
         "timeout" => 120.0,
         "mip_solver_drives" => mip_solver_drives,
@@ -68,54 +77,59 @@ function run_qp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, red
 
     testname = "QP optimal"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, Int)
-        @variable(m, y >= 0)
-        @variable(m, 0 <= u <= 10, Int)
-        @variable(m, w == 1)
+        JuMP.@variable(m, x >= 0, Int)
+        JuMP.@variable(m, y >= 0)
+        JuMP.@variable(m, 0 <= u <= 10, Int)
+        JuMP.@variable(m, w == 1)
 
-        @objective(m, Min, -3x - y)
+        JuMP.@objective(m, Min, -3x - y)
 
-        @constraint(m, 3x + 10 <= 20)
-        @constraint(m, y^2 <= u*w)
+        JuMP.@constraint(m, 3x + 10 <= 20)
+        JuMP.@constraint(m, y^2 <= u*w)
 
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(objective_value(m), -12.162277, atol=TOL)
-        @test isapprox(objective_bound(m), -12.162277, atol=TOL)
-        @test isapprox(value(x), 3, atol=TOL)
-        @test isapprox(value(y), 3.162277, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), -12.162277, atol=TOL)
+        @test isapprox(JuMP.objective_bound(m), -12.162277, atol=TOL)
+        @test isapprox(JuMP.value(x), 3, atol=TOL)
+        @test isapprox(JuMP.value(y), 3.162277, atol=TOL)
     end
 
     testname = "QP maximize"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, Int)
-        @variable(m, y >= 0)
-        @variable(m, 0 <= u <= 10, Int)
-        @variable(m, w == 1)
+        JuMP.@variable(m, x >= 0, Int)
+        JuMP.@variable(m, y >= 0)
+        JuMP.@variable(m, 0 <= u <= 10, Int)
+        JuMP.@variable(m, w == 1)
 
-        @objective(m, Max, 3x + y)
+        JuMP.@objective(m, Max, 3x + y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @constraint(m, x^2 <= u*w)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@constraint(m, x^2 <= u*w)
 
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(objective_value(m), 9.5, atol=TOL)
-        @test isapprox(objective_bound(m), 9.5, atol=TOL)
-        @test isapprox(value(x), 3, atol=TOL)
-        @test isapprox(value(y), 0.5, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), 9.5, atol=TOL)
+        @test isapprox(JuMP.objective_bound(m), 9.5, atol=TOL)
+        @test isapprox(JuMP.value(x), 3, atol=TOL)
+        @test isapprox(JuMP.value(y), 0.5, atol=TOL)
     end
 end
 
 # NLP model tests
-function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, redirect)
-    solver = optimizer_with_attributes(
+function run_nlp(
+    mip_solver_drives::Bool,
+    mip_solver,
+    cont_solver,
+    redirect::Bool,
+)
+    solver = JuMP.optimizer_with_attributes(
         Pavito.Optimizer,
         "timeout" => 120.0,
         "mip_solver_drives" => mip_solver_drives,
@@ -126,15 +140,15 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
     testname = "Nonconvex error"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1, Int)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Min, -3x - y)
+        JuMP.@objective(m, Min, -3x - y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @NLconstraint(m, 8 <= x^2 <= 10)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@NLconstraint(m, 8 <= x^2 <= 10)
 
         status = solve_jump(testname, m, redirect)
 
@@ -143,36 +157,36 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
     testname = "Optimal"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1, Int)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Min, -3x - y)
+        JuMP.@objective(m, Min, -3x - y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @constraint(m, x >= 1)
-        @NLconstraint(m, x^2 <= 5)
-        @NLconstraint(m, exp(y) + x <= 7)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@constraint(m, x >= 1)
+        JuMP.@NLconstraint(m, x^2 <= 5)
+        JuMP.@NLconstraint(m, exp(y) + x <= 7)
 
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(value(x), 2.0)
+        @test isapprox(JuMP.value(x), 2.0)
     end
 
     testname = "Infeasible 1"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1, Int)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Min, -3x - y)
+        JuMP.@objective(m, Min, -3x - y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @NLconstraint(m, x^2 >= 9)
-        @NLconstraint(m, exp(y) + x <= 2)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@NLconstraint(m, x^2 >= 9)
+        JuMP.@NLconstraint(m, exp(y) + x <= 2)
 
         status = solve_jump(testname, m, redirect)
 
@@ -181,17 +195,17 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
     testname = "Infeasible 2"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1, Int)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Min, -3x - y)
+        JuMP.@objective(m, Min, -3x - y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @constraint(m, 6x + 5y >= 30)
-        @NLconstraint(m, x^2 >= 8)
-        @NLconstraint(m, exp(y) + x <= 7)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@constraint(m, 6x + 5y >= 30)
+        JuMP.@NLconstraint(m, x^2 >= 8)
+        JuMP.@NLconstraint(m, exp(y) + x <= 7)
 
         status = solve_jump(testname, m, redirect)
 
@@ -200,18 +214,18 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
     testname = "Continuous error"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Min, -3x - y)
+        JuMP.@objective(m, Min, -3x - y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @constraint(m, x >= 1)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@constraint(m, x >= 1)
 
-        @NLconstraint(m, x^2 <= 5)
-        @NLconstraint(m, exp(y) + x <= 7)
+        JuMP.@NLconstraint(m, x^2 <= 5)
+        JuMP.@NLconstraint(m, exp(y) + x <= 7)
 
         status = solve_jump(testname, m, redirect)
 
@@ -220,38 +234,38 @@ function run_nlp(mip_solver_drives::Bool, mip_solver, cont_solver, log_level, re
 
     testname = "Maximization"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1, Int)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Max, 3x + y)
+        JuMP.@objective(m, Max, 3x + y)
 
-        @constraint(m, 3x + 2y + 10 <= 20)
-        @NLconstraint(m, x^2 <= 9)
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@NLconstraint(m, x^2 <= 9)
 
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(objective_value(m), 9.5, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), 9.5, atol=TOL)
     end
 
     testname = "Nonlinear objective"
     @testset "$testname" begin
-        m = Model(solver)
+        m = JuMP.Model(solver)
 
-        @variable(m, x >= 0, start = 1, Int)
-        @variable(m, y >= 0, start = 1)
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
 
-        @objective(m, Max, -x^2 - y)
+        JuMP.@objective(m, Max, -x^2 - y)
 
-        @constraint(m, x + 2y >= 4)
-        @NLconstraint(m, x^2 <= 9)
+        JuMP.@constraint(m, x + 2y >= 4)
+        JuMP.@NLconstraint(m, x^2 <= 9)
 
         status = solve_jump(testname, m, redirect)
 
         @test status == MOI.OPTIMAL
-        @test isapprox(objective_value(m), -2.0, atol=TOL)
-        @test isapprox(objective_bound(m), -2.0, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), -2.0, atol=TOL)
+        @test isapprox(JuMP.objective_bound(m), -2.0, atol=TOL)
     end
 end

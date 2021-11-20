@@ -30,13 +30,13 @@ kni = try_import(:KNITRO)
 
 mip_solvers = Dict{String, MOI.OptimizerWithAttributes}()
 if glp
-    mip_solvers["GLPK"] = optimizer_with_attributes(GLPK.Optimizer, "msg_lev" => 0, "tol_int" => tol_int, "tol_bnd" => tol_feas, "mip_gap" => tol_gap)
+    mip_solvers["GLPK"] = JuMP.optimizer_with_attributes(GLPK.Optimizer, "msg_lev" => 0, "tol_int" => tol_int, "tol_bnd" => tol_feas, "mip_gap" => tol_gap)
 end
 if cpx
-    mip_solvers["CPLEX"] = optimizer_with_attributes(CPLEX.Optimizer, "CPX_PARAM_SCRIND" => 0, "CPX_PARAM_EPINT" => tol_int, "CPX_PARAM_EPRHS" => tol_feas, "CPX_PARAM_EPGAP" => tol_gap)
+    mip_solvers["CPLEX"] = JuMP.optimizer_with_attributes(CPLEX.Optimizer, "CPX_PARAM_SCRIND" => 0, "CPX_PARAM_EPINT" => tol_int, "CPX_PARAM_EPRHS" => tol_feas, "CPX_PARAM_EPGAP" => tol_gap)
 end
 if grb
-    mip_solvers["Gurobi"] = optimizer_with_attributes(Gurobi.Optimizer, "OutputFlag" => 0, "IntFeasTol" => tol_int, "FeasibilityTol" => tol_feas, "MIPGap" => tol_gap)
+    mip_solvers["Gurobi"] = JuMP.optimizer_with_attributes(Gurobi.Optimizer, "OutputFlag" => 0, "IntFeasTol" => tol_int, "FeasibilityTol" => tol_feas, "MIPGap" => tol_gap)
 end
 #if cbc
 #    mip_solvers["CBC"] = Cbc.CbcSolver(logLevel=0, integerTolerance=tol_int, primalTolerance=tol_feas, ratioGap=tol_gap, check_warmstart=false)
@@ -45,10 +45,10 @@ end
 # NLP solvers
 cont_solvers = Dict{String, MOI.OptimizerWithAttributes}()
 if ipt
-    cont_solvers["Ipopt"] = optimizer_with_attributes(Ipopt.Optimizer, MOI.Silent() => true)
+    cont_solvers["Ipopt"] = JuMP.optimizer_with_attributes(Ipopt.Optimizer, MOI.Silent() => true)
 end
 if kni
-    cont_solvers["Knitro"] = optimizer_with_attributes(KNITRO.Optimizer, "objrange" => 1e16, "outlev" => 0, "maxit" => 100000)
+    cont_solvers["Knitro"] = JuMP.optimizer_with_attributes(KNITRO.Optimizer, "objrange" => 1e16, "outlev" => 0, "maxit" => 100000)
 end
 
 # print solvers

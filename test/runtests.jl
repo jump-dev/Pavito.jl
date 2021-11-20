@@ -8,52 +8,61 @@
  Pavito solver unit tests
 =========================================================#
 
-using JuMP
-import Pavito
-
 using Test
 using Printf
+import MathOptInterface
+const MOI = MathOptInterface
+const MOIT = MOI.Test
+import JuMP
+import Ipopt
+import Pavito
 
-#using Logging
-#disable_logging(Logging.Error)
+# test options
+TOL = 1e-3 # test absolute tolerance
+redirect = true # printing
 
-include("nlptest.jl")
-include("conictest.jl")
+# Pavito algorithms to run
+use_msd = [
+    false,
+    true,
+]
+alg(msd::Bool) = (msd ? "MSD" : "Iter")
 
-# test absolute tolerance and Pavito printing level
-TOL = 1e-3
-ll = 2
-redirect = true
-
-# MIP solvers
+# options for MIP solvers
 tol_int = 1e-9
 tol_feas = 1e-7
 tol_gap = 0.0
 
+# load MIP and NLP solvers
 include("solvers.jl")
-include("MOI_wrapper.jl")
 
-# run tests
-@testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false, true]
-    @testset "MILP solver - $mipname" for (mipname, mip) in mip_solvers
-        if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
-            # Only test MSD on lazy callback solvers
-            continue
-        end
-        @testset "NLP models - $conname" for (conname, con) in cont_solvers
-            println("\nNLP models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-            run_qp(msd, mip, con, ll, redirect)
-            run_nlp(msd, mip, con, ll, redirect)
-        end
-        # TODO enable SOC tests once MOI v0.9.15 is released thanks to https://github.com/jump-dev/MathOptInterface.jl/pull/1046
-        # For EXP tests, we might probably need https://github.com/jump-dev/MathOptInterface.jl/issues/846
-#        @testset "Exp+SOC models - $conname" for (conname, con) in cont_solvers
-#            println("\nExp+SOC models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-#            run_soc(msd, mip, con, ll, redirect)
-#            run_expsoc(msd, mip, con, ll, redirect)
-#        end
-        flush(stdout)
-        flush(stderr)
-    end
-    println()
+# run MOI tests
+println("starting MOI tests")
+include("MOI_wrapper.jl")
+@testset "MOI tests - $(alg(msd))" for msd in use_msd
+    println("\n", alg(msd))
+    run_moi_tests(msd)
 end
+println()
+
+# run instance tests
+println("starting instance tests")
+include("nlptest.jl")
+# include("conictest.jl") TODO rewrite for MathProgBase -> MathOptInterface
+@testset "instance tests - $(alg(msd)), $mipname, $conname" for
+    msd in use_msd, (mipname, mip) in mip_solvers, (conname, con) in cont_solvers
+    if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
+        # only test MSD on lazy callback solvers
+        continue
+    end
+    println("\n$(alg(msd)), $mipname, $conname")
+
+    run_qp(msd, mip, con, redirect)
+    run_nlp(msd, mip, con, redirect)
+
+    # TODO enable SOC tests: https://github.com/jump-dev/MathOptInterface.jl/pull/1046
+    # run_soc(msd, mip, con, redirect)
+    # TODO for Exp tests, need: https://github.com/jump-dev/MathOptInterface.jl/issues/846
+    # run_expsoc(msd, mip, con, redirect)
+end
+println()
