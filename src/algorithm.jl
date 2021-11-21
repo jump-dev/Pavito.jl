@@ -46,6 +46,10 @@ function MOI.optimize!(model::Optimizer)
     model.objective_gap = Inf
     model.num_iters_or_callbacks = 0
 
+    if isempty(model.int_indices) && model.log_level >= 1
+        @warn("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
+    end
+
     if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
         if model.θ === nothing
             model.θ = MOI.add_variable(model.mip_optimizer)
@@ -90,7 +94,15 @@ function MOI.optimize!(model::Optimizer)
     if ini_nlp_status in [MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_OPTIMAL]
         cont_solution = MOI.get(model.cont_optimizer, MOI.VariablePrimal(), model.cont_variables)
         cont_obj = MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
-        add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max)
+        if isempty(model.int_indices)
+            model.objective_value = cont_obj
+            model.objective_bound = cont_obj
+            update_gap(model, is_max)
+            model.mip_solution = Float64[]
+            model.incumbent = cont_solution
+        else
+            add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max)
+        end
         # We cannot update `model.objective_value` or `model.incumbent` as this
         # it may not be feasible, it is only feasible for the relaxed problem.
     elseif ini_nlp_status == MOI.DUAL_INFEASIBLE
@@ -115,17 +127,8 @@ function MOI.optimize!(model::Optimizer)
     flush(stdout)
 
     if isempty(model.int_indices)
-        if model.log_level >= 1
-            @warn("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
-        end
         model.status = ini_nlp_status
-        model.objective_value = cont_obj
-        model.objective_bound = cont_obj
-        update_gap(model, is_max)
-        model.mip_solution = Float64[]
-        model.incumbent = cont_solution
     else
-
         if cont_solution !== nothing && MOI.supports(model.mip_optimizer, MOI.VariablePrimalStart(), MOI.VariableIndex) && all(isfinite, cont_solution)
             MOI.set(model.mip_optimizer, MOI.VariablePrimalStart(), model.mip_variables, cont_solution)
 
@@ -202,8 +205,8 @@ function MOI.optimize!(model::Optimizer)
             mip_status = MOI.get(model.mip_optimizer, MOI.TerminationStatus())
             if mip_status == MOI.OPTIMAL
                 model.status = MOI.LOCALLY_SOLVED
-            elseif mip_status == MOI.NEARLY_OPTIMAL
-                model.status = MOI.NEARLY_LOCALLY_SOLVED
+            elseif mip_status == MOI.ALMOST_OPTIMAL
+                model.status = MOI.ALMOST_LOCALLY_SOLVED
             else
                 model.status = mip_status
             end

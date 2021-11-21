@@ -308,6 +308,8 @@ MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.total_time
 
 MOI.get(model::Optimizer, ::MOI.TerminationStatus) = model.status
 
+MOI.get(model::Optimizer, ::MOI.RawStatusString) = string(model.status)
+
 MOI.get(model::Optimizer, ::MOI.VariablePrimal, v::MOI.VariableIndex) =
     model.incumbent[v.value]
 
@@ -319,7 +321,7 @@ function MOI.get(model::Optimizer, attr::MOI.PrimalStatus)
     term_status = MOI.get(model, MOI.TerminationStatus())
     if term_status == MOI.LOCALLY_SOLVED
         return MOI.FEASIBLE_POINT
-    elseif term_status == MOI.NEARLY_LOCALLY_SOLVED
+    elseif term_status == MOI.ALMOST_LOCALLY_SOLVED
         return MOI.NEARLY_FEASIBLE_POINT
     else
         return MOI.NO_SOLUTION

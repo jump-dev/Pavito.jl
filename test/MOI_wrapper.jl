@@ -20,16 +20,21 @@ function run_moi_tests(
         rtol = 1e-4,
         optimal_status = MOI.LOCALLY_SOLVED,
         exclude = Any[
+            MOI.ConstraintPrimal, # TODO ?
             MOI.ConstraintDual,
             MOI.ConstraintBasisStatus,
             MOI.DualObjectiveValue,
-            MOI.ObjectiveBound,
         ],
     )
 
     exclude = String[
         # not implemented:
         "test_attribute_SolverVersion",
+        # Pavito only returns LOCALLY_INFEASIBLE, not INFEASIBLE # TODO
+        "INFEASIBLE",
+        "test_solve_DualStatus_INFEASIBILITY_CERTIFICATE_",
+        # other reasons
+        "test_conic",
     ]
     if msd
         # exclude for MSD algorithm only
