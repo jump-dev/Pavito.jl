@@ -5,55 +5,91 @@
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #=========================================================
- Pavito solver unit tests
+ Pavito solver tests
 =========================================================#
-
-using JuMP
-import Pavito
 
 using Test
 using Printf
+import MathOptInterface
+const MOI = MathOptInterface
+const MOIT = MOI.Test
+import JuMP
+import Ipopt
+import MINLPTests
+import Pavito
 
-#using Logging
-#disable_logging(Logging.Error)
+TOL = 1e-3 # test absolute tolerance
+log_level = 0
 
-include("nlptest.jl")
-include("conictest.jl")
+# Pavito algorithms to run
+use_msd = [
+    false,
+    true,
+]
+alg(msd::Bool) = (msd ? "MSD" : "Iter")
 
-# test absolute tolerance and Pavito printing level
-TOL = 1e-3
-ll = 2
-redirect = true
-
-# MIP solvers
+# options for MIP solvers
 tol_int = 1e-9
 tol_feas = 1e-7
 tol_gap = 0.0
 
-include("solvers.jl")
-include("MOI_wrapper.jl")
+# load MIP and NLP solvers
+include("import_solvers.jl")
+@assert haskey(mip_solvers, "GLPK")
+@assert haskey(cont_solvers, "Ipopt")
 
-# run tests
-@testset "Algorithm - $(msd ? "MSD" : "Iter")" for msd in [false, true]
-    @testset "MILP solver - $mipname" for (mipname, mip) in mip_solvers
-        if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
-            # Only test MSD on lazy callback solvers
-            continue
-        end
-        @testset "NLP models - $conname" for (conname, con) in cont_solvers
-            println("\nNLP models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-            run_qp(msd, mip, con, ll, redirect)
-            run_nlp(msd, mip, con, ll, redirect)
-        end
-        # TODO enable SOC tests once MOI v0.9.15 is released thanks to https://github.com/jump-dev/MathOptInterface.jl/pull/1046
-        # For EXP tests, we might probably need https://github.com/jump-dev/MathOptInterface.jl/issues/846
-#        @testset "Exp+SOC models - $conname" for (conname, con) in cont_solvers
-#            println("\nExp+SOC models: $(msd ? "MSD" : "Iter"), $mipname, $conname")
-#            run_soc(msd, mip, con, ll, redirect)
-#            run_expsoc(msd, mip, con, ll, redirect)
-#        end
-        flush(stdout)
-        flush(stderr)
+println("starting MOI tests")
+include("MOI_wrapper.jl")
+@testset "MOI tests - $(alg(msd))" for msd in use_msd
+    println("\n", alg(msd))
+    run_moi_tests(msd, mip_solvers["GLPK"], cont_solvers["Ipopt"])
+end
+println()
+
+println("starting instance tests and printing tests")
+include("qp_nlp_tests.jl")
+@testset "instance tests - $(alg(msd)), $mipname, $conname" for
+    msd in use_msd, (mipname, mip) in mip_solvers, (conname, con) in cont_solvers
+    if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
+        continue # only test MSD on lazy callback solvers
     end
-    println()
+    println("\n$(alg(msd)), $mipname, $conname")
+
+    run_qp(msd, mip, con, log_level, TOL)
+    run_nlp(msd, mip, con, log_level, TOL)
+end
+println()
+@testset "printing tests - $(alg(msd)), log_level $ll" for msd in use_msd,
+    ll in 0:2
+    run_log_level(msd, first(values(mip_solvers)), first(values(cont_solvers)),
+        ll, TOL)
+end
+println()
+
+println("starting MINLPTests tests")
+@testset "MINLPTests - $(alg(msd))" for msd in use_msd
+    pavito = JuMP.optimizer_with_attributes(
+        Pavito.Optimizer,
+        "timeout" => 120.0,
+        "mip_solver_drives" => msd,
+        "mip_solver" => first(values(mip_solvers)),
+        "cont_solver" => first(values(cont_solvers)),
+        "log_level" => log_level,
+    )
+
+    exclude = String[
+        # TODO fix failures:
+        "003_010",
+        "003_011",
+        "003_012",
+        "003_013",
+        "003_014",
+        "003_015",
+        "003_016",
+        "006_010",
+        "007_010",
+        "007_020",
+    ]
+    MINLPTests.test_nlp_mi(pavito, exclude = exclude, objective_tol = TOL,
+        primal_tol = TOL, dual_tol = NaN)
 end

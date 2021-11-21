@@ -1,48 +1,79 @@
-using Test
+#  Copyright 2017, Chris Coey and Miles Lubin
+#  Copyright 2016, Los Alamos National Laboratory, LANS LLC.
+#  This Source Code Form is subject to the terms of the Mozilla Public
+#  License, v. 2.0. If a copy of the MPL was not distributed with this
+#  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#using MathOptInterface
-#const MOI = MathOptInterface
+#=========================================================
+ MathOptInterface.Test tests
+=========================================================#
 
-import Pavito
+function run_moi_tests(
+    msd::Bool,
+    mip_solver,
+    cont_solver,
+)
+    pavito = Pavito.Optimizer()
+    MOI.set(pavito, MOI.Silent(), true)
+    MOI.set(pavito, MOI.RawOptimizerAttribute("mip_solver_drives"), msd)
+    MOI.set(pavito, MOI.RawOptimizerAttribute("mip_solver"), mip_solver)
+    MOI.set(pavito, MOI.RawOptimizerAttribute("cont_solver"), cont_solver)
+    model = MOI.Utilities.CachingOptimizer(
+        MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+        MOI.Bridges.full_bridge_optimizer(pavito, Float64),
+    )
 
-const CONFIG = MOI.DeprecatedTest.Config(atol=1e-6, rtol=1e-6, duals=false, query=false)
+    config = MOIT.Config(
+        atol = 1e-4,
+        rtol = 1e-4,
+        optimal_status = MOI.LOCALLY_SOLVED,
+        exclude = Any[
+            MOI.ConstraintPrimal, # TODO this doesn't fix the failures
+            MOI.ConstraintDual,
+            MOI.ConstraintBasisStatus,
+            MOI.DualObjectiveValue,
+        ],
+    )
 
-@testset "MOI tests - $(msd ? "MSD" : "Iter")" for msd in [false, true]
-    # The default for `diverging_iterates_tol` is `1e-20` which makes Ipopt terminates with `ITERATION_LIMIT` for most infeasible
-    # problems instead of `NORM_LIMIT`.
-    ipopt = optimizer_with_attributes(Ipopt.Optimizer, MOI.Silent() => true, "diverging_iterates_tol" => 1e-18)
-    optimizer_constructor = MOI.OptimizerWithAttributes(Pavito.Optimizer, MOI.Silent() => true, "mip_solver" => first(values(mip_solvers)), "cont_solver" => ipopt, "mip_solver_drives" => msd)
-    optimizer = MOI.instantiate(optimizer_constructor)
+    exclude = String[
+        # not implemented:
+        "test_attribute_SolverVersion",
+        # TODO Pavito only returns LOCALLY_INFEASIBLE, not INFEASIBLE:
+        # see https://github.com/jump-dev/MathOptInterface.jl/issues/1671
+        "INFEASIBLE",
+        "test_solve_DualStatus_INFEASIBILITY_CERTIFICATE_",
+        # invalid model:
+        "test_constraint_ZeroOne_bounds_3",
+        "test_linear_VectorAffineFunction_empty_row",
+        # CachingOptimizer does not throw if optimizer not attached:
+        "test_model_copy_to_UnsupportedAttribute",
+        "test_model_copy_to_UnsupportedConstraint",
+        # NLP features not supported:
+        "test_nonlinear_hs071_NLPBlockDual",
+        "test_nonlinear_invalid",
+        # conic mostly unsupported:
+        # TODO when ConstraintPrimal is fixed, use some conic tests e.g. SOC
+        # see https://github.com/jump-dev/MathOptInterface.jl/pull/1046
+        # see https://github.com/jump-dev/MathOptInterface.jl/issues/846
+        "test_conic",
+        # TODO ConstraintPrimal not supported, should use a fallback in future:
+        # see https://github.com/jump-dev/MathOptInterface.jl/issues/1310
+        "test_solve_result_index",
+        "test_quadratic_constraint",
+        "test_quadratic_nonconvex",
+        "test_quadratic_nonhomogeneous",
+        "test_linear_integration",
+        "test_linear_integer",
+        "test_linear_Semi",
+        "test_linear_Interval_inactive",
+        "test_linear_FEASIBILITY_SENSE",
+    ]
 
-    @testset "SolverName" begin
-        @test MOI.get(optimizer, MOI.SolverName()) == "Pavito"
-    end
-
-    @testset "supports_default_copy_to" begin
-        @test MOI.supports_incremental_interface(optimizer)
-    end
-
-    @testset "Unit" begin
-         MOI.DeprecatedTest.feasibility_sense(optimizer, CONFIG)
-         MOI.DeprecatedTest.max_sense(optimizer, CONFIG)
-         MOI.DeprecatedTest.min_sense(optimizer, CONFIG)
-         MOI.DeprecatedTest.time_limit_sec(optimizer, CONFIG)
-         MOI.DeprecatedTest.silent(optimizer, CONFIG)
-    end
-
-    @testset "Integer Linear" begin
-        excludes = [
-             # `ConstraintPrimal` not implemented
-             "int1", "semiinttest",
-             # Not supported by continuous solver and not discrete.
-             "semiconttest",
-             # Not supported by GLPK
-             "int2", "indicator1", "indicator2", "indicator3", "indicator4"
-        ]
-        if msd
-            # GLPK has an integer-infeasible solution
-            push!(excludes, "knapsack")
-        end
-        MOI.DeprecatedTest.intlineartest(optimizer, CONFIG, excludes)
-    end
+    MOIT.runtests(
+        model,
+        config,
+        # include = [],
+        exclude = exclude,
+        # warn_unsupported = true,
+    )
 end
