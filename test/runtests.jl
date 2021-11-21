@@ -60,3 +60,9 @@ include("qp_nlp_tests.jl")
     run_nlp(msd, mip, con, log_level, TOL)
 end
 println()
+@testset "printing tests - $(alg(msd)), log_level $log_level" for msd in use_msd,
+    log_level in 0:2
+    run_log_level(msd, first(values(mip_solvers)), first(values(cont_solvers)),
+        log_level, TOL)
+end
+println()

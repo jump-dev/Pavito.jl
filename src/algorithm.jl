@@ -211,6 +211,7 @@ function MOI.optimize!(model::Optimizer)
                 model.status = mip_status
             end
             model.objective_bound = MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
+            update_gap(model, is_max)
         else
             # iterative method
             prev_mip_solution = fill(NaN, length(model.mip_variables))

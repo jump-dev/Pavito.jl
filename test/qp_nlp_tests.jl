@@ -168,26 +168,6 @@ function run_nlp(
         m = JuMP.Model(solver)
 
         JuMP.@variable(m, x >= 0, start = 1, Int)
-        JuMP.@variable(m, y >= 0, start = 1)
-
-        JuMP.@objective(m, Min, -3x - y)
-
-        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
-        JuMP.@constraint(m, 6x + 5y >= 30)
-        JuMP.@NLconstraint(m, x^2 >= 8)
-        JuMP.@NLconstraint(m, exp(y) + x <= 7)
-
-        JuMP.optimize!(m)
-        status = MOI.get(m, MOI.TerminationStatus())
-
-        @test status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE]
-    end
-
-    testname = "Infeasible 3"
-    @testset "$testname" begin
-        m = JuMP.Model(solver)
-
-        JuMP.@variable(m, x >= 0, start = 1, Int)
 
         JuMP.@objective(m, Max, x)
 
@@ -262,5 +242,60 @@ function run_nlp(
         @test status == MOI.LOCALLY_SOLVED
         @test isapprox(JuMP.objective_value(m), -2.0, atol=TOL)
         @test isapprox(JuMP.objective_bound(m), -2.0, atol=TOL)
+    end
+end
+
+# log_level model tests
+function run_log_level(
+    mip_solver_drives::Bool,
+    mip_solver,
+    cont_solver,
+    log_level::Int,
+    TOL::Real,
+)
+    solver = JuMP.optimizer_with_attributes(
+        Pavito.Optimizer,
+        "timeout" => 120.0,
+        "mip_solver_drives" => mip_solver_drives,
+        "mip_solver" => mip_solver,
+        "cont_solver" => cont_solver,
+        "log_level" => log_level,
+    )
+
+    testname = "QP optimal 2"
+    @testset "$testname" begin
+        m = JuMP.Model(solver)
+
+        JuMP.@variable(m, x >= 0, Int)
+
+        JuMP.@objective(m, Max, x)
+
+        JuMP.@constraint(m, x^2 <= 5)
+        JuMP.@constraint(m, x >= 0.5)
+
+        JuMP.optimize!(m)
+        status = MOI.get(m, MOI.TerminationStatus())
+
+        @test status == MOI.LOCALLY_SOLVED
+    end
+
+    testname = "Infeasible 3"
+    @testset "$testname" begin
+        m = JuMP.Model(solver)
+
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+        JuMP.@variable(m, y >= 0, start = 1)
+
+        JuMP.@objective(m, Min, -3x - y)
+
+        JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+        JuMP.@constraint(m, 6x + 5y >= 30)
+        JuMP.@NLconstraint(m, x^2 >= 8)
+        JuMP.@NLconstraint(m, exp(y) + x <= 7)
+
+        JuMP.optimize!(m)
+        status = MOI.get(m, MOI.TerminationStatus())
+
+        @test status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE]
     end
 end
