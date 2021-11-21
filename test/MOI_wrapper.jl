@@ -1,33 +1,28 @@
 # MOI tests
 
-function run_moi_tests(msd::Bool)
-    # The default for `diverging_iterates_tol` is `1e-20`, which makes Ipopt
-    # terminate with `ITERATION_LIMIT` for most infeasible problems instead of
-    # `NORM_LIMIT`.
-    ipopt = MOI.OptimizerWithAttributes(
-        Ipopt.Optimizer,
-        MOI.Silent() => true,
-        "diverging_iterates_tol" => 1e-18,
+function run_moi_tests(
+    msd::Bool,
+    mip_solver,
+    cont_solver,
+)
+    model = MOI.Utilities.CachingOptimizer(
+        MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+        MOI.Bridges.full_bridge_optimizer(Pavito.Optimizer(), Float64),
     )
-    optimizer_constructor = MOI.OptimizerWithAttributes(
-        Pavito.Optimizer,
-        MOI.Silent() => true,
-        "mip_solver" => first(values(mip_solvers)),
-        "cont_solver" => ipopt,
-        "mip_solver_drives" => msd,
-    )
-    optimizer = MOI.instantiate(optimizer_constructor)
-
-    @test MOI.get(optimizer, MOI.SolverName()) == "Pavito"
-    @test MOI.supports_incremental_interface(optimizer)
+    MOI.set(model, MOI.Silent(), true)
+    MOI.set(model, MOI.RawOptimizerAttribute("mip_solver_drives"), msd)
+    MOI.set(model, MOI.RawOptimizerAttribute("mip_solver"), mip_solver)
+    MOI.set(model, MOI.RawOptimizerAttribute("cont_solver"), cont_solver)
 
     config = MOIT.Config(
-        atol = 1e-6, rtol = 1e-6,
-        optimal_status = MOI.OPTIMAL,
+        atol = 1e-4,
+        rtol = 1e-4,
+        optimal_status = MOI.LOCALLY_SOLVED,
         exclude = Any[
             MOI.ConstraintDual,
-            MOI.VariableName,
-            MOI.ConstraintName,
+            MOI.ConstraintBasisStatus,
+            MOI.DualObjectiveValue,
+            MOI.ObjectiveBound,
         ],
     )
 
@@ -40,7 +35,9 @@ function run_moi_tests(msd::Bool)
         push!(exclude, "...")
     end
 
-    MOIT.runtests(optimizer, config,
+    MOIT.runtests(
+        model,
+        config,
         # include = [],
         exclude = exclude,
         warn_unsupported = true,

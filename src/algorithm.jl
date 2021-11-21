@@ -47,7 +47,7 @@ function MOI.optimize!(model::Optimizer)
     model.num_iters_or_callbacks = 0
 
     if isempty(model.int_indices)
-        error("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
+        @warn("No variables of type integer or binary; call the continuous solver directly for pure continuous problems.")
     end
 
     if (model.nlp_block !== nothing && model.nlp_block.has_objective) || model.objective isa SQF
@@ -291,12 +291,12 @@ function check_progress(model::Optimizer, prev_mip_solution)
     # finish if optimal or cycling integer solutions
     int_ind = collect(model.int_indices)
     if model.objective_gap <= model.rel_gap
-        model.status = MOI.OPTIMAL
+        model.status = MOI.LOCALLY_SOLVED
         return true
     elseif round.(prev_mip_solution[int_ind]) == round.(model.mip_solution[int_ind])
         @warn "mixed-integer cycling detected ($(round.(prev_mip_solution[int_ind])) == $(round.(model.mip_solution[int_ind]))), terminating Pavito"
         if isfinite(model.objective_gap)
-            model.status = MOI.ALMOST_OPTIMAL
+            model.status = MOI.ALMOST_LOCALLY_SOLVED
         else
             model.status = MOI.OTHER_ERROR
         end
