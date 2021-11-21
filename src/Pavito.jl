@@ -6,7 +6,7 @@
 
 #=========================================================
  This package contains the mixed-integer convex programming (MICP) solver Pavito
- See readme for details
+ See README.md for details
 =========================================================#
 
 module Pavito
@@ -15,9 +15,13 @@ module Pavito
     import MathOptInterface
     const MOI = MathOptInterface
 
+    const VI = MOI.VariableIndex
     const SQF = MOI.ScalarQuadraticFunction{Float64}
+    const LT = MOI.LessThan{Float64}
+    const GT = MOI.GreaterThan{Float64}
 
     include("infeasible_nlp.jl")
+    include("optimize.jl")
+    include("cut_utils.jl")
     include("MOI_wrapper.jl")
-    include("algorithm.jl")
 end
