@@ -20,7 +20,7 @@ function run_moi_tests(
         rtol = 1e-4,
         optimal_status = MOI.LOCALLY_SOLVED,
         exclude = Any[
-            MOI.ConstraintPrimal, # TODO ?
+            MOI.ConstraintPrimal, # TODO this doesn't fix the failures
             MOI.ConstraintDual,
             MOI.ConstraintBasisStatus,
             MOI.DualObjectiveValue,
@@ -30,22 +30,42 @@ function run_moi_tests(
     exclude = String[
         # not implemented:
         "test_attribute_SolverVersion",
-        # Pavito only returns LOCALLY_INFEASIBLE, not INFEASIBLE # TODO
+        # TODO Pavito only returns LOCALLY_INFEASIBLE, not INFEASIBLE:
+        # see https://github.com/jump-dev/MathOptInterface.jl/issues/1671
         "INFEASIBLE",
         "test_solve_DualStatus_INFEASIBILITY_CERTIFICATE_",
-        # other reasons
+        # invalid model:
+        "test_constraint_ZeroOne_bounds_3",
+        "test_linear_VectorAffineFunction_empty_row",
+        # CachingOptimizer does not throw if optimizer not attached:
+        "test_model_copy_to_UnsupportedAttribute",
+        "test_model_copy_to_UnsupportedConstraint",
+        # NLP features not supported:
+        "test_nonlinear_hs071_NLPBlockDual",
+        "test_nonlinear_invalid",
+        # conic mostly unsupported:
+        # TODO when ConstraintPrimal is fixed, use some conic tests e.g. SOC
+        # see https://github.com/jump-dev/MathOptInterface.jl/pull/1046
+        # see https://github.com/jump-dev/MathOptInterface.jl/issues/846
         "test_conic",
+        # TODO ConstraintPrimal not supported, should use a fallback in future:
+        # see https://github.com/jump-dev/MathOptInterface.jl/issues/1310
+        "test_solve_result_index",
+        "test_quadratic_constraint",
+        "test_quadratic_nonconvex",
+        "test_quadratic_nonhomogeneous",
+        "test_linear_integration",
+        "test_linear_integer",
+        "test_linear_Semi",
+        "test_linear_Interval_inactive",
+        "test_linear_FEASIBILITY_SENSE",
     ]
-    if msd
-        # exclude for MSD algorithm only
-        push!(exclude, "...")
-    end
 
     MOIT.runtests(
         model,
         config,
         # include = [],
         exclude = exclude,
-        warn_unsupported = true,
+        # warn_unsupported = true,
     )
 end

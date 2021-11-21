@@ -17,7 +17,7 @@ module Pavito
 
     const SQF = MOI.ScalarQuadraticFunction{Float64}
 
-    include("inf_nlp.jl")
+    include("infeasible_nlp.jl")
     include("MOI_wrapper.jl")
     include("algorithm.jl")
 end

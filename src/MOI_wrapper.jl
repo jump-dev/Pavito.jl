@@ -310,14 +310,22 @@ MOI.get(model::Optimizer, ::MOI.TerminationStatus) = model.status
 
 MOI.get(model::Optimizer, ::MOI.RawStatusString) = string(model.status)
 
-MOI.get(model::Optimizer, ::MOI.VariablePrimal, v::MOI.VariableIndex) =
-    model.incumbent[v.value]
+function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, v::MOI.VariableIndex)
+    MOI.check_result_index_bounds(model, attr)
+    return model.incumbent[v.value]
+end
 
-MOI.get(model::Optimizer, ::MOI.ObjectiveValue) = model.objective_value
+function MOI.get(model::Optimizer, attr::MOI.ObjectiveValue)
+    MOI.check_result_index_bounds(model, attr)
+    return model.objective_value
+end
 
 MOI.get(model::Optimizer, ::MOI.ObjectiveBound) = model.objective_bound
 
 function MOI.get(model::Optimizer, attr::MOI.PrimalStatus)
+    if attr.result_index != 1
+        return MOI.NO_SOLUTION
+    end
     term_status = MOI.get(model, MOI.TerminationStatus())
     if term_status == MOI.LOCALLY_SOLVED
         return MOI.FEASIBLE_POINT
