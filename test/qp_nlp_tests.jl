@@ -72,6 +72,23 @@ function run_qp(
         @test isapprox(JuMP.value(x), 3, atol=TOL)
         @test isapprox(JuMP.value(y), 0.5, atol=TOL)
     end
+
+    testname = "QP infeasible"
+    @testset "$testname" begin
+        m = JuMP.Model(solver)
+
+        JuMP.@variable(m, x >= 0, Int)
+
+        JuMP.@objective(m, Max, x)
+
+        JuMP.@constraint(m, x^2 <= 3.9)
+        JuMP.@constraint(m, x >= 1.1)
+
+        JuMP.optimize!(m)
+        status = MOI.get(m, MOI.TerminationStatus())
+
+        @test status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE]
+    end
 end
 
 # NLP model tests
@@ -159,6 +176,23 @@ function run_nlp(
         JuMP.@constraint(m, 6x + 5y >= 30)
         JuMP.@NLconstraint(m, x^2 >= 8)
         JuMP.@NLconstraint(m, exp(y) + x <= 7)
+
+        JuMP.optimize!(m)
+        status = MOI.get(m, MOI.TerminationStatus())
+
+        @test status in [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE]
+    end
+
+    testname = "Infeasible 3"
+    @testset "$testname" begin
+        m = JuMP.Model(solver)
+
+        JuMP.@variable(m, x >= 0, start = 1, Int)
+
+        JuMP.@objective(m, Max, x)
+
+        JuMP.@NLconstraint(m, log(x) >= 0.75)
+        JuMP.@constraint(m, x <= 2.9)
 
         JuMP.optimize!(m)
         status = MOI.get(m, MOI.TerminationStatus())
