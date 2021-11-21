@@ -10,10 +10,12 @@
 =========================================================#
 
 module Pavito
+    using Printf
+
     import MathOptInterface
     const MOI = MathOptInterface
 
-    using Printf
+    const SQF = MOI.ScalarQuadraticFunction{Float64}
 
     include("inf_nlp.jl")
     include("MOI_wrapper.jl")

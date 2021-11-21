@@ -17,14 +17,13 @@ import JuMP
 import Ipopt
 import Pavito
 
-# test options
 TOL = 1e-3 # test absolute tolerance
-redirect = true # printing
+log_level = 0
 
 # Pavito algorithms to run
 use_msd = [
     false,
-    # true,
+    true,
 ]
 alg(msd::Bool) = (msd ? "MSD" : "Iter")
 
@@ -47,24 +46,24 @@ include("MOI_wrapper.jl")
 end
 println()
 
-# # run instance tests
-# println("starting instance tests")
-# include("nlptest.jl")
-# # include("conictest.jl") TODO rewrite for MathProgBase -> MathOptInterface
-# @testset "instance tests - $(alg(msd)), $mipname, $conname" for
-#     msd in use_msd, (mipname, mip) in mip_solvers, (conname, con) in cont_solvers
-#     if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
-#         # only test MSD on lazy callback solvers
-#         continue
-#     end
-#     println("\n$(alg(msd)), $mipname, $conname")
-#
-#     run_qp(msd, mip, con, redirect)
-#     run_nlp(msd, mip, con, redirect)
-#
-#     # TODO enable SOC tests: https://github.com/jump-dev/MathOptInterface.jl/pull/1046
-#     # run_soc(msd, mip, con, redirect)
-#     # TODO for Exp tests, need: https://github.com/jump-dev/MathOptInterface.jl/issues/846
-#     # run_expsoc(msd, mip, con, redirect)
-# end
-# println()
+# run instance tests
+println("starting instance tests")
+include("qpnlptest.jl")
+# include("conictest.jl") TODO rewrite for MathProgBase -> MathOptInterface
+@testset "instance tests - $(alg(msd)), $mipname, $conname" for
+    msd in use_msd, (mipname, mip) in mip_solvers, (conname, con) in cont_solvers
+    if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
+        # only test MSD on lazy callback solvers
+        continue
+    end
+    println("\n$(alg(msd)), $mipname, $conname")
+
+    # run_qp(msd, mip, con, log_level, TOL)
+    run_nlp(msd, mip, con, log_level, TOL)
+
+    # TODO enable SOC tests: https://github.com/jump-dev/MathOptInterface.jl/pull/1046
+    # run_soc(msd, mip, con)
+    # TODO for Exp tests, need: https://github.com/jump-dev/MathOptInterface.jl/issues/846
+    # run_expsoc(msd, mip, con)
+end
+println()
