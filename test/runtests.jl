@@ -22,10 +22,7 @@ TOL = 1e-3 # test absolute tolerance
 log_level = 0
 
 # Pavito algorithms to run
-use_msd = [
-    false,
-    true,
-]
+use_msd = [false, true]
 alg(msd::Bool) = (msd ? "MSD" : "Iter")
 
 # options for MIP solvers
@@ -48,8 +45,10 @@ println()
 
 println("starting instance tests and printing tests")
 include("qp_nlp_tests.jl")
-@testset "instance tests - $(alg(msd)), $mipname, $conname" for
-    msd in use_msd, (mipname, mip) in mip_solvers, (conname, con) in cont_solvers
+@testset "instance tests - $(alg(msd)), $mipname, $conname" for msd in use_msd,
+    (mipname, mip) in mip_solvers,
+    (conname, con) in cont_solvers
+
     if msd && !MOI.supports(MOI.instantiate(mip), MOI.LazyConstraintCallback())
         continue # only test MSD on lazy callback solvers
     end
@@ -61,8 +60,14 @@ end
 println()
 @testset "printing tests - $(alg(msd)), log_level $ll" for msd in use_msd,
     ll in 0:2
-    run_log_level(msd, first(values(mip_solvers)), first(values(cont_solvers)),
-        ll, TOL)
+
+    run_log_level(
+        msd,
+        first(values(mip_solvers)),
+        first(values(cont_solvers)),
+        ll,
+        TOL,
+    )
 end
 println()
 
@@ -90,6 +95,11 @@ println("starting MINLPTests tests")
         "007_010",
         "007_020",
     ]
-    MINLPTests.test_nlp_mi(pavito, exclude = exclude, objective_tol = TOL,
-        primal_tol = TOL, dual_tol = NaN)
+    MINLPTests.test_nlp_mi(
+        pavito,
+        exclude = exclude,
+        objective_tol = TOL,
+        primal_tol = TOL,
+        dual_tol = NaN,
+    )
 end

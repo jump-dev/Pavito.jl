@@ -20,7 +20,7 @@ function try_import(name::Symbol)
     end
 end
 
-mip_solvers = Dict{String, MOI.OptimizerWithAttributes}()
+mip_solvers = Dict{String,MOI.OptimizerWithAttributes}()
 if try_import(:GLPK)
     mip_solvers["GLPK"] = MOI.OptimizerWithAttributes(
         GLPK.Optimizer,
@@ -60,7 +60,7 @@ if try_import(:Cbc)
 end
 
 # NLP solvers
-cont_solvers = Dict{String, MOI.OptimizerWithAttributes}()
+cont_solvers = Dict{String,MOI.OptimizerWithAttributes}()
 if try_import(:Ipopt)
     # the default for `diverging_iterates_tol`, `1e-20`, makes Ipopt terminate
     # with `ITERATION_LIMIT` for most infeasible problems instead of `NORM_LIMIT`

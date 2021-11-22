@@ -37,16 +37,16 @@ function run_qp(
         JuMP.@objective(m, Min, -3x - y)
 
         JuMP.@constraint(m, 3x + 10 <= 20)
-        JuMP.@constraint(m, y^2 <= u*w)
+        JuMP.@constraint(m, y^2 <= u * w)
 
         JuMP.optimize!(m)
         status = MOI.get(m, MOI.TerminationStatus())
 
         @test status == MOI.LOCALLY_SOLVED
-        @test isapprox(JuMP.objective_value(m), -12.162277, atol=TOL)
-        @test isapprox(JuMP.objective_bound(m), -12.162277, atol=TOL)
-        @test isapprox(JuMP.value(x), 3, atol=TOL)
-        @test isapprox(JuMP.value(y), 3.162277, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), -12.162277, atol = TOL)
+        @test isapprox(JuMP.objective_bound(m), -12.162277, atol = TOL)
+        @test isapprox(JuMP.value(x), 3, atol = TOL)
+        @test isapprox(JuMP.value(y), 3.162277, atol = TOL)
     end
 
     testname = "QP maximize"
@@ -61,16 +61,16 @@ function run_qp(
         JuMP.@objective(m, Max, 3x + y)
 
         JuMP.@constraint(m, 3x + 2y + 10 <= 20)
-        JuMP.@constraint(m, x^2 <= u*w)
+        JuMP.@constraint(m, x^2 <= u * w)
 
         JuMP.optimize!(m)
         status = MOI.get(m, MOI.TerminationStatus())
 
         @test status == MOI.LOCALLY_SOLVED
-        @test isapprox(JuMP.objective_value(m), 9.5, atol=TOL)
-        @test isapprox(JuMP.objective_bound(m), 9.5, atol=TOL)
-        @test isapprox(JuMP.value(x), 3, atol=TOL)
-        @test isapprox(JuMP.value(y), 0.5, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), 9.5, atol = TOL)
+        @test isapprox(JuMP.objective_bound(m), 9.5, atol = TOL)
+        @test isapprox(JuMP.value(x), 3, atol = TOL)
+        @test isapprox(JuMP.value(y), 0.5, atol = TOL)
     end
 
     testname = "QP infeasible"
@@ -199,10 +199,10 @@ function run_nlp(
         status = MOI.get(m, MOI.TerminationStatus())
 
         @test status == MOI.LOCALLY_SOLVED
-        @test isapprox(JuMP.objective_value(m), -8.26928, atol=TOL)
-        @test isapprox(JuMP.objective_bound(m), -8.26928, atol=TOL)
-        @test isapprox(JuMP.value(x), 2.23607, atol=TOL)
-        @test isapprox(JuMP.value(y), 1.56107, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), -8.26928, atol = TOL)
+        @test isapprox(JuMP.objective_bound(m), -8.26928, atol = TOL)
+        @test isapprox(JuMP.value(x), 2.23607, atol = TOL)
+        @test isapprox(JuMP.value(y), 1.56107, atol = TOL)
     end
 
     testname = "Maximization"
@@ -221,7 +221,7 @@ function run_nlp(
         status = MOI.get(m, MOI.TerminationStatus())
 
         @test status == MOI.LOCALLY_SOLVED
-        @test isapprox(JuMP.objective_value(m), 9.5, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), 9.5, atol = TOL)
     end
 
     testname = "Nonlinear objective"
@@ -240,8 +240,8 @@ function run_nlp(
         status = MOI.get(m, MOI.TerminationStatus())
 
         @test status == MOI.LOCALLY_SOLVED
-        @test isapprox(JuMP.objective_value(m), -2.0, atol=TOL)
-        @test isapprox(JuMP.objective_bound(m), -2.0, atol=TOL)
+        @test isapprox(JuMP.objective_value(m), -2.0, atol = TOL)
+        @test isapprox(JuMP.objective_bound(m), -2.0, atol = TOL)
     end
 end
 
