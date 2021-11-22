@@ -198,6 +198,21 @@ function _test_nlp_optimal(solver, TOL)
     return
 end
 
+function _test_nlp_second_order_cone(solver, TOL)
+    m = JuMP.Model(solver)
+    JuMP.@variable(m, x >= 1, start = 1, Int)
+    JuMP.@variable(m, y >= 0, start = 1)
+    JuMP.@objective(m, Min, -3x - y)
+    JuMP.@constraint(m, 3x + 2y + 10 <= 20)
+    JuMP.@constraint(m, [sqrt(5), x] in SecondOrderCone())
+    JuMP.@NLconstraint(m, exp(y) + x <= 7)
+    JuMP.optimize!(m)
+    status = JuMP.termination_status(m)
+    @test status == MOI.LOCALLY_SOLVED
+    @test isapprox(JuMP.value(x), 2.0)
+    return
+end
+
 function _test_nlp_infeasible_1(solver, TOL)
     m = JuMP.Model(solver)
     JuMP.@variable(m, x >= 0, start = 1, Int)
