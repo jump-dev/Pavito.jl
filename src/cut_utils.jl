@@ -16,7 +16,7 @@
 # if the constraint is `lb <= g(x) <= ub` or `g(x) == lb == ub`, we assume
 # `g(x)` is linear
 
-function add_cut(
+function _add_cut(
     model::Optimizer,
     cont_solution,
     gc,
@@ -54,9 +54,9 @@ function add_cut(
     return
 end
 
-function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
+function _add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
     for (func, set) in cons
-        gc = eval_func(cont_solution, func)
+        gc = _eval_func(cont_solution, func)
 
         dgc_idx = Int64[]
         dgc_nzv = Float64[]
@@ -81,12 +81,12 @@ function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
             end
         end
 
-        add_cut(model, cont_solution, gc, dgc_idx, dgc_nzv, set, callback_data)
+        _add_cut(model, cont_solution, gc, dgc_idx, dgc_nzv, set, callback_data)
     end
     return
 end
 
-function add_cuts(
+function _add_cuts(
     model::Optimizer,
     cont_solution,
     jac_IJ,
@@ -117,7 +117,7 @@ function add_cuts(
         for i in 1:num_constrs
             # create supporting hyperplane
             set = _bound_set(model, i)
-            add_cut(
+            _add_cut(
                 model,
                 cont_solution,
                 g[i],
@@ -128,8 +128,8 @@ function add_cuts(
             )
         end
     end
-    add_quad_cuts(model, cont_solution, model.quad_LT, callback_data)
-    add_quad_cuts(model, cont_solution, model.quad_GT, callback_data)
+    _add_quad_cuts(model, cont_solution, model.quad_LT, callback_data)
+    _add_quad_cuts(model, cont_solution, model.quad_GT, callback_data)
 
     # given an objective `Min nlp_obj_var = f(x)` with a convex `f(x)`:
     # -f(x) + f'(c) * c >= f'(x) * x - nlp_obj_var
@@ -139,8 +139,8 @@ function add_cuts(
     # create objective cut
     if (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ||
        model.objective isa MOI.ScalarQuadraticFunction{Float64}
-        f = eval_objective(model, cont_solution)
-        eval_objective_gradient(model, grad_f, cont_solution)
+        f = _eval_objective(model, cont_solution)
+        _eval_objective_gradient(model, grad_f, cont_solution)
         constant = -f
         func = MOI.Utilities.operate(-, Float64, model.nlp_obj_var)
         for j in eachindex(grad_f)
@@ -179,7 +179,7 @@ end
 function _add_lazy_constraint(model, callback_data, func, set, mip_solution)
     # GLPK does not check whether the new cut is redundant, so we filter it out
     # see https://github.com/jump-dev/GLPK.jl/issues/153
-    if !approx_in(eval_func(mip_solution, func), set)
+    if !_approx_in(_eval_func(mip_solution, func), set)
         MOI.submit(
             model.mip_optimizer,
             MOI.LazyConstraint(callback_data),
@@ -190,15 +190,15 @@ function _add_lazy_constraint(model, callback_data, func, set, mip_solution)
     return
 end
 
-function eval_objective(model::Optimizer, values)
+function _eval_objective(model::Optimizer, values)
     if !isnothing(model.nlp_block) && model.nlp_block.has_objective
         return MOI.eval_objective(model.nlp_block.evaluator, values)
     else
-        return eval_func(values, model.objective)
+        return _eval_func(values, model.objective)
     end
 end
 
-function eval_gradient(
+function _eval_gradient(
     func::MOI.ScalarQuadraticFunction{Float64},
     grad_f,
     values,
@@ -219,11 +219,11 @@ function eval_gradient(
     return
 end
 
-function eval_objective_gradient(model::Optimizer, grad_f, values)
+function _eval_objective_gradient(model::Optimizer, grad_f, values)
     if (!isnothing(model.nlp_block) && model.nlp_block.has_objective)
         MOI.eval_objective_gradient(model.nlp_block.evaluator, grad_f, values)
     else
-        eval_gradient(model.objective, grad_f, values)
+        _eval_gradient(model.objective, grad_f, values)
     end
     return
 end
@@ -231,12 +231,12 @@ end
 # `isapprox(0.0, 1e-16)` is false but `_is_approx(0.0, 1e-16)` is true.
 _is_approx(x, y) = isapprox(x, y, atol = Base.rtoldefault(Float64))
 
-approx_in(value, set::MOI.EqualTo) = _is_approx(value, MOI.constant(set))
+_approx_in(value, set::MOI.EqualTo) = _is_approx(value, MOI.constant(set))
 
-function approx_in(value, set::MOI.LessThan{Float64})
-    return (_is_approx(value, MOI.constant(set)) || value < MOI.constant(set))
+function _approx_in(value, set::MOI.LessThan{Float64})
+    return _is_approx(value, MOI.constant(set)) || value < MOI.constant(set)
 end
 
-function approx_in(value, set::MOI.GreaterThan{Float64})
-    return (_is_approx(value, MOI.constant(set)) || value > MOI.constant(set))
+function _approx_in(value, set::MOI.GreaterThan{Float64})
+    return _is_approx(value, MOI.constant(set)) || value > MOI.constant(set)
 end

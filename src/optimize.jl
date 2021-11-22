@@ -49,7 +49,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
             },
         },
     } # `q + slack >= lb`
-    infeasible_evaluator::InfeasibleNLPEvaluator # NLP evaluator used for `infeasible_optimizer`
+    infeasible_evaluator::_InfeasibleNLPEvaluator # NLP evaluator used for `infeasible_optimizer`
     int_indices::BitSet                          # Indices of discrete variables
 
     nlp_block::Union{Nothing,MOI.NLPBlockData}           # NLP block set to `Optimizer`
@@ -83,355 +83,34 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     end
 end
 
-function MOI.optimize!(model::Optimizer)
-    model.status = MOI.OPTIMIZE_NOT_CALLED
-    fill!(model.incumbent, NaN)
-    model.new_incumb = false
-    model.total_time = 0.0
-    model.objective_value = NaN
-    model.objective_bound = NaN
-    model.objective_gap = Inf
-    model.num_iters_or_callbacks = 0
-
-    if isempty(model.int_indices) && model.log_level >= 1
-        @warn "No variables of type integer or binary; call the continuous " *
-              "solver directly for pure continuous problems."
-    end
-
-    if (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ||
-       model.objective isa MOI.ScalarQuadraticFunction{Float64}
-        if isnothing(model.nlp_obj_var)
-            model.nlp_obj_var = MOI.add_variable(model.mip_optimizer)
-            MOI.set(
-                model.mip_optimizer,
-                MOI.ObjectiveFunction{MOI.VariableIndex}(),
-                model.nlp_obj_var,
-            )
-        end
+function _print_model_summary(model)
+    obj_type = if !isnothing(model.nlp_block) && model.nlp_block.has_objective
+        "nonlinear"
+    elseif model.objective isa MOI.ScalarQuadraticFunction{Float64}
+        "quadratic"
     else
-        if !isnothing(model.nlp_obj_var)
-            MOI.delete(model.mip_optimizer, model.nlp_obj_var)
-            model.nlp_obj_var = nothing
-        end
+        "linear"
     end
-
-    start = time()
-    nlp_time = 0.0
-    mip_time = 0.0
-    is_max =
-        MOI.get(model.cont_optimizer, MOI.ObjectiveSense()) == MOI.MAX_SENSE
-    comp = (is_max ? (>) : (<))
-    model.objective_value = (is_max ? -Inf : Inf)
-    model.objective_bound = -model.objective_value
-
-    if model.log_level > 0
-        obj_type = (
-            (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ?
-            "nonlinear" :
-            (
-                model.objective isa MOI.ScalarQuadraticFunction{Float64} ?
-                "quadratic" : "linear"
-            )
-        )
-        ncont = length(model.cont_variables)
-        nint = length(model.int_indices)
-        nnlp = (
-            isnothing(model.nlp_block) ? 0 :
-            length(model.nlp_block.constraint_bounds)
-        )
-        nquad = length(model.quad_LT) + length(model.quad_GT)
-        println(
-            "\nMINLP has a $obj_type objective, $ncont continuous variables, " *
-            "$nint integer variables, $nnlp nonlinear constraints, and " *
-            "$nquad quadratic constraints",
-        )
-
-        alg = (model.mip_solver_drives ? "MIP-solver-driven" : "iterative")
-        println("\nPavito started, using $alg method...")
-    end
-    flush(stdout)
-
-    if isnothing(model.nlp_block)
-        jac_V = jac_IJ = nothing
+    ncont = length(model.cont_variables)
+    nint = length(model.int_indices)
+    nnlp = if isnothing(model.nlp_block)
+        0
     else
-        MOI.initialize(
-            model.nlp_block.evaluator,
-            intersect(
-                [:Grad, :Jac, :Hess],
-                MOI.features_available(model.nlp_block.evaluator),
-            ),
-        )
-        jac_IJ = MOI.jacobian_structure(model.nlp_block.evaluator)
-        jac_V = zeros(length(jac_IJ))
+        length(model.nlp_block.constraint_bounds)
     end
-    grad_f = zeros(length(model.cont_variables))
+    nquad = length(model.quad_LT) + length(model.quad_GT)
+    println(
+        "\nMINLP has a $obj_type objective, $ncont continuous variables, " *
+        "$nint integer variables, $nnlp nonlinear constraints, and " *
+        "$nquad quadratic constraints",
+    )
 
-    # solve initial continuous relaxation NLP model
-    start_nlp = time()
-    MOI.optimize!(model.cont_optimizer)
-    nlp_time += time() - start_nlp
-    ini_nlp_status = MOI.get(model.cont_optimizer, MOI.TerminationStatus())
-    cont_solution = nothing
+    alg = model.mip_solver_drives ? "MIP-solver-driven" : "iterative"
+    println("\nPavito started, using $alg method...")
+    return
+end
 
-    if ini_nlp_status in [MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_OPTIMAL]
-        cont_solution = MOI.get(
-            model.cont_optimizer,
-            MOI.VariablePrimal(),
-            model.cont_variables,
-        )
-        cont_obj = MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
-
-        if isempty(model.int_indices)
-            model.objective_value = cont_obj
-            model.objective_bound = cont_obj
-            update_gap(model, is_max)
-            model.mip_solution = Float64[]
-            model.incumbent = cont_solution
-        else
-            add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max)
-        end
-    elseif ini_nlp_status == MOI.DUAL_INFEASIBLE
-        # the integrality constraints may make the MINLP bounded so we continue
-        @warn "initial NLP relaxation unbounded"
-    elseif ini_nlp_status == MOI.NORM_LIMIT
-        # Ipopt usually ends with `Diverging_Iterates` for unbounded problems,
-        # this gets converted to `MOI.NORM_LIMIT`
-        @warn "initial NLP relaxation terminated with status `NORM_LIMIT` " *
-              "which usually means that the problem is unbounded"
-    else
-        if ini_nlp_status in
-           [MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE, MOI.ALMOST_INFEASIBLE]
-            # the original problem is infeasible too
-            @warn "initial NLP relaxation infeasible"
-            model.status = ini_nlp_status
-        else
-            @warn "NLP solver failure: initial NLP relaxation terminated with " *
-                  "status $ini_nlp_status"
-            model.status = ini_nlp_status
-        end
-        return
-    end
-    flush(stdout)
-
-    if isempty(model.int_indices)
-        model.status = ini_nlp_status
-    else
-        if !isnothing(cont_solution) &&
-           MOI.supports(
-               model.mip_optimizer,
-               MOI.VariablePrimalStart(),
-               MOI.VariableIndex,
-           ) &&
-           all(isfinite, cont_solution)
-            MOI.set(
-                model.mip_optimizer,
-                MOI.VariablePrimalStart(),
-                model.mip_variables,
-                cont_solution,
-            )
-
-            if !isnothing(model.nlp_obj_var)
-                MOI.set(
-                    model.mip_optimizer,
-                    MOI.VariablePrimalStart(),
-                    model.nlp_obj_var,
-                    cont_obj,
-                )
-            end
-        end
-
-        # start main OA algorithm
-
-        if model.mip_solver_drives
-            # MIP-solver-driven method
-            cache_contsol = Dict{Vector{Float64},Vector{Float64}}()
-
-            function lazy_callback(cb)
-                model.num_iters_or_callbacks += 1
-
-                model.mip_solution = MOI.get(
-                    model.mip_optimizer,
-                    MOI.CallbackVariablePrimal(cb),
-                    model.mip_variables,
-                )
-                round_mipsol = round.(model.mip_solution)
-                if any(
-                    i -> abs(model.mip_solution[i] - round_mipsol[i]) > 1e-5,
-                    model.int_indices,
-                )
-                    # the solution is integer-infeasible; see:
-                    # https://github.com/jump-dev/GLPK.jl/issues/146
-                    # https://github.com/jump-dev/MathOptInterface.jl/pull/1172
-                    @warn "Integer-infeasible solution in lazy callback"
-                    return
-                end
-
-                # if integer assignment has been seen before, use cached point
-                if haskey(cache_contsol, round_mipsol)
-                    # retrieve existing solution
-                    cont_solution = cache_contsol[round_mipsol]
-                else
-                    # try to solve new subproblem, update incumbent if feasible
-                    start_nlp = time()
-                    cont_solution = solve_subproblem(model, comp)
-                    nlp_time += time() - start_nlp
-                    cache_contsol[round_mipsol] = cont_solution
-                end
-
-                # add gradient cuts to MIP model from NLP solution
-                if all(isfinite, cont_solution)
-                    add_cuts(
-                        model,
-                        cont_solution,
-                        jac_IJ,
-                        jac_V,
-                        grad_f,
-                        is_max,
-                        cb,
-                    )
-                else
-                    @warn "no cuts could be added, Pavito should be terminated"
-                    # TODO terminate the solver once there is a
-                    # solver-independent callback for that in MOI
-                    return
-                end
-            end
-            MOI.set(
-                model.mip_optimizer,
-                MOI.LazyConstraintCallback(),
-                lazy_callback,
-            )
-
-            function heuristic_callback(cb)
-                # if have a new best feasible solution since last heuristic
-                # solution added, set MIP solution to the new incumbent
-                if model.new_incumb
-                    if isnothing(model.nlp_obj_var)
-                        vars = model.mip_variables
-                        incumb = model.incumbent
-                    else
-                        vars = vcat(model.mip_variables, model.nlp_obj_var)
-                        incumb = vcat(model.incumbent, model.objective_value)
-                    end
-                    MOI.submit(
-                        model.mip_optimizer,
-                        MOI.HeuristicSolution(cb),
-                        vars,
-                        incumb,
-                    )
-                    model.new_incumb = false
-                end
-            end
-
-            MOI.set(
-                model.mip_optimizer,
-                MOI.HeuristicCallback(),
-                heuristic_callback,
-            )
-
-            if isfinite(model.timeout)
-                MOI.set(
-                    model.mip_optimizer,
-                    MOI.TimeLimitSec(),
-                    max(1.0, model.timeout - (time() - start)),
-                )
-            end
-            MOI.optimize!(model.mip_optimizer)
-
-            mip_status = MOI.get(model.mip_optimizer, MOI.TerminationStatus())
-            if mip_status == MOI.OPTIMAL
-                model.status = MOI.LOCALLY_SOLVED
-            elseif mip_status == MOI.ALMOST_OPTIMAL
-                model.status = MOI.ALMOST_LOCALLY_SOLVED
-            else
-                model.status = mip_status
-            end
-            model.objective_bound =
-                MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
-            update_gap(model, is_max)
-        else
-            # iterative method
-            prev_mip_solution = fill(NaN, length(model.mip_variables))
-            while (time() - start) < model.timeout
-                model.num_iters_or_callbacks += 1
-
-                # set remaining time limit on MIP solver
-                if isfinite(model.timeout)
-                    MOI.set(
-                        model.mip_optimizer,
-                        MOI.TimeLimitSec(),
-                        max(1.0, model.timeout - (time() - start)),
-                    )
-                end
-
-                # solve MIP model
-                start_mip = time()
-                MOI.optimize!(model.mip_optimizer)
-                mip_status =
-                    MOI.get(model.mip_optimizer, MOI.TerminationStatus())
-                mip_time += time() - start_mip
-
-                # finish if MIP was infeasible or if problematic status
-                if (mip_status == MOI.INFEASIBLE) ||
-                   (mip_status == MOI.INFEASIBLE_OR_UNBOUNDED)
-                    model.status = MOI.INFEASIBLE
-                    break
-                elseif (mip_status != MOI.OPTIMAL) &&
-                       (mip_status != MOI.ALMOST_OPTIMAL)
-                    @warn "MIP solver status was $mip_status, terminating Pavito"
-                    model.status = mip_status
-                    break
-                end
-                model.mip_solution = MOI.get(
-                    model.mip_optimizer,
-                    MOI.VariablePrimal(),
-                    model.mip_variables,
-                )
-
-                # update best bound from MIP bound
-                mip_obj_bound =
-                    MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
-                if isfinite(mip_obj_bound) &&
-                   comp(model.objective_bound, mip_obj_bound)
-                    model.objective_bound = mip_obj_bound
-                end
-
-                update_gap(model, is_max)
-                printgap(model, start)
-                check_progress(model, prev_mip_solution) && break
-
-                # try to solve new subproblem, update incumbent if feasible
-                start_nlp = time()
-                cont_solution = solve_subproblem(model, comp)
-                nlp_time += time() - start_nlp
-
-                update_gap(model, is_max)
-                check_progress(model, prev_mip_solution) && break
-
-                # add gradient cuts to MIP model from NLP solution
-                if all(isfinite, cont_solution)
-                    add_cuts(
-                        model,
-                        cont_solution,
-                        jac_IJ,
-                        jac_V,
-                        grad_f,
-                        is_max,
-                    )
-                else
-                    @warn "no cuts could be added, terminating Pavito"
-                    break
-                end
-
-                # TODO warmstart MIP from incumbent
-                prev_mip_solution = model.mip_solution
-                flush(stdout)
-            end
-        end
-    end
-    flush(stdout)
-
-    # finish
+function _clean_up_algorithm(model, start, mip_time, nlp_time)
     model.total_time = time() - start
     if model.log_level > 0
         println("\nPavito finished...\n")
@@ -456,12 +135,337 @@ function MOI.optimize!(model::Optimizer)
         println()
     end
     flush(stdout)
-
-    return nothing
+    return
 end
 
-function update_gap(model::Optimizer, is_max::Bool)
-    # update gap if best bound and best objective are finite
+abstract type _AbstractAlgortithm end
+
+struct _MIPSolverDrivenAlgorithm end
+
+function _run_algorithm(
+    ::_MIPSolverDrivenAlgorithm,
+    model,
+    start,
+    mip_time,
+    nlp_time,
+    jac_IJ,
+    jac_V,
+    grad_f,
+    is_max,
+)
+    comp = is_max ? (>) : (<)
+    cache_contsol = Dict{Vector{Float64},Vector{Float64}}()
+    function lazy_callback(cb)
+        model.num_iters_or_callbacks += 1
+        model.mip_solution = MOI.get(
+            model.mip_optimizer,
+            MOI.CallbackVariablePrimal(cb),
+            model.mip_variables,
+        )
+        round_mipsol = round.(model.mip_solution)
+        if any(
+            i -> abs(model.mip_solution[i] - round_mipsol[i]) > 1e-5,
+            model.int_indices,
+        )
+            # The solution is integer-infeasible; see:
+            # https://github.com/jump-dev/GLPK.jl/issues/146
+            # https://github.com/jump-dev/MathOptInterface.jl/pull/1172
+            @warn "Integer-infeasible solution in lazy callback"
+            return
+        end
+        # If integer assignment has been seen before, use cached point
+        if haskey(cache_contsol, round_mipsol)
+            cont_solution = cache_contsol[round_mipsol]
+        else  # Try to solve new subproblem, update incumbent if feasible.
+            start_nlp = time()
+            cont_solution = _solve_subproblem(model, comp)
+            nlp_time += time() - start_nlp
+            cache_contsol[round_mipsol] = cont_solution
+        end
+        # Add gradient cuts to MIP model from NLP solution
+        if all(isfinite, cont_solution)
+            _add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max, cb)
+        else
+            @warn "no cuts could be added, Pavito should be terminated"
+            # TODO terminate the solver once there is a
+            # solver-independent callback for that in MOI
+            return
+        end
+    end
+    MOI.set(model.mip_optimizer, MOI.LazyConstraintCallback(), lazy_callback)
+    function heuristic_callback(cb)
+        # If have a new best feasible solution since last heuristic
+        # solution added, set MIP solution to the new incumbent.
+        if !model.new_incumb
+            return
+        elseif isnothing(model.nlp_obj_var)
+            MOI.submit(
+                model.mip_optimizer,
+                MOI.HeuristicSolution(cb),
+                model.mip_variables,
+                model.incumbent,
+            )
+        else
+            MOI.submit(
+                model.mip_optimizer,
+                MOI.HeuristicSolution(cb),
+                vcat(model.mip_variables, model.nlp_obj_var),
+                vcat(model.incumbent, model.objective_value),
+            )
+        end
+        model.new_incumb = false
+        return
+    end
+    MOI.set(model.mip_optimizer, MOI.HeuristicCallback(), heuristic_callback)
+    if isfinite(model.timeout)
+        MOI.set(
+            model.mip_optimizer,
+            MOI.TimeLimitSec(),
+            max(1.0, model.timeout - (time() - start)),
+        )
+    end
+    MOI.optimize!(model.mip_optimizer)
+    mip_status = MOI.get(model.mip_optimizer, MOI.TerminationStatus())
+    if mip_status == MOI.OPTIMAL
+        model.status = MOI.LOCALLY_SOLVED
+    elseif mip_status == MOI.ALMOST_OPTIMAL
+        model.status = MOI.ALMOST_LOCALLY_SOLVED
+    else
+        model.status = mip_status
+    end
+    model.objective_bound = MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
+    _update_gap(model, is_max)
+    return mip_time, nlp_time
+end
+
+struct _IterativeAlgorithm end
+
+function _run_algorithm(
+    ::_IterativeAlgorithm,
+    model,
+    start,
+    mip_time,
+    nlp_time,
+    jac_IJ,
+    jac_V,
+    grad_f,
+    is_max,
+)
+    comp = is_max ? (>) : (<)
+    prev_mip_solution = fill(NaN, length(model.mip_variables))
+    while time() - start < model.timeout
+        model.num_iters_or_callbacks += 1
+        # Set remaining time limit on MIP solver
+        if isfinite(model.timeout)
+            MOI.set(
+                model.mip_optimizer,
+                MOI.TimeLimitSec(),
+                max(1.0, model.timeout - (time() - start)),
+            )
+        end
+        # Solve MIP model
+        start_mip = time()
+        MOI.optimize!(model.mip_optimizer)
+        mip_status = MOI.get(model.mip_optimizer, MOI.TerminationStatus())
+        mip_time += time() - start_mip
+        # Finish if MIP was infeasible or if problematic status
+        if mip_status in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+            model.status = MOI.INFEASIBLE
+            break
+        elseif (mip_status != MOI.OPTIMAL) && (mip_status != MOI.ALMOST_OPTIMAL)
+            @warn "MIP solver status was $mip_status, terminating Pavito"
+            model.status = mip_status
+            break
+        end
+        model.mip_solution = MOI.get(
+            model.mip_optimizer,
+            MOI.VariablePrimal(),
+            model.mip_variables,
+        )
+        # Update best bound from MIP bound
+        mip_obj_bound = MOI.get(model.mip_optimizer, MOI.ObjectiveBound())
+        if isfinite(mip_obj_bound) && comp(model.objective_bound, mip_obj_bound)
+            model.objective_bound = mip_obj_bound
+        end
+        _update_gap(model, is_max)
+        _print_gap(model, start)
+        if _check_progress(model, prev_mip_solution)
+            break
+        end
+        # Try to solve new subproblem, update incumbent if feasible
+        start_nlp = time()
+        cont_solution = _solve_subproblem(model, comp)
+        nlp_time += time() - start_nlp
+        _update_gap(model, is_max)
+        if _check_progress(model, prev_mip_solution)
+            break
+        end
+        # Add gradient cuts to MIP model from NLP solution
+        if all(isfinite, cont_solution)
+            _add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max)
+        else
+            @warn "no cuts could be added, terminating Pavito"
+            break
+        end
+        # TODO warmstart MIP from incumbent
+        prev_mip_solution = model.mip_solution
+        flush(stdout)
+    end
+    return mip_time, nlp_time
+end
+
+function MOI.optimize!(model::Optimizer)
+    model.status = MOI.OPTIMIZE_NOT_CALLED
+    fill!(model.incumbent, NaN)
+    model.new_incumb = false
+    model.total_time = 0.0
+    model.objective_value = NaN
+    model.objective_bound = NaN
+    model.objective_gap = Inf
+    model.num_iters_or_callbacks = 0
+    if isempty(model.int_indices) && model.log_level >= 1
+        @warn "No variables of type integer or binary; call the continuous " *
+              "solver directly for pure continuous problems."
+    end
+    if (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ||
+       model.objective isa MOI.ScalarQuadraticFunction{Float64}
+        if isnothing(model.nlp_obj_var)
+            model.nlp_obj_var = MOI.add_variable(model.mip_optimizer)
+            MOI.set(
+                model.mip_optimizer,
+                MOI.ObjectiveFunction{MOI.VariableIndex}(),
+                model.nlp_obj_var,
+            )
+        end
+    else
+        if !isnothing(model.nlp_obj_var)
+            MOI.delete(model.mip_optimizer, model.nlp_obj_var)
+            model.nlp_obj_var = nothing
+        end
+    end
+    start = time()
+    nlp_time = 0.0
+    mip_time = 0.0
+    is_max =
+        MOI.get(model.cont_optimizer, MOI.ObjectiveSense()) == MOI.MAX_SENSE
+    model.objective_value = is_max ? -Inf : Inf
+    model.objective_bound = -model.objective_value
+    if model.log_level > 0
+        _print_model_summary(model)
+    end
+    flush(stdout)
+    if isnothing(model.nlp_block)
+        jac_V = jac_IJ = nothing
+    else
+        MOI.initialize(
+            model.nlp_block.evaluator,
+            intersect(
+                [:Grad, :Jac, :Hess],
+                MOI.features_available(model.nlp_block.evaluator),
+            ),
+        )
+        jac_IJ = MOI.jacobian_structure(model.nlp_block.evaluator)
+        jac_V = zeros(length(jac_IJ))
+    end
+    grad_f = zeros(length(model.cont_variables))
+    # Solve initial continuous relaxation NLP model.
+    start_nlp = time()
+    MOI.optimize!(model.cont_optimizer)
+    nlp_time += time() - start_nlp
+    ini_nlp_status = MOI.get(model.cont_optimizer, MOI.TerminationStatus())
+    cont_solution, cont_obj = nothing, 0.0
+    if ini_nlp_status in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_OPTIMAL)
+        cont_solution = MOI.get(
+            model.cont_optimizer,
+            MOI.VariablePrimal(),
+            model.cont_variables,
+        )
+        cont_obj = MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
+        if isempty(model.int_indices)
+            model.objective_value = cont_obj
+            model.objective_bound = cont_obj
+            _update_gap(model, is_max)
+            model.mip_solution = Float64[]
+            model.incumbent = cont_solution
+        else
+            _add_cuts(model, cont_solution, jac_IJ, jac_V, grad_f, is_max)
+        end
+    elseif ini_nlp_status == MOI.DUAL_INFEASIBLE
+        # The integrality constraints may make the MINLP bounded so we continue
+        @warn "initial NLP relaxation unbounded"
+    elseif ini_nlp_status == MOI.NORM_LIMIT
+        # Ipopt usually ends with `Diverging_Iterates` for unbounded problems,
+        # this gets converted to `MOI.NORM_LIMIT`
+        @warn "initial NLP relaxation terminated with status `NORM_LIMIT` " *
+              "which usually means that the problem is unbounded"
+    else
+        if ini_nlp_status in
+           (MOI.INFEASIBLE, MOI.LOCALLY_INFEASIBLE, MOI.ALMOST_INFEASIBLE)
+            # The original problem is infeasible too
+            @warn "initial NLP relaxation infeasible"
+            model.status = ini_nlp_status
+        else
+            @warn "NLP solver failure: initial NLP relaxation terminated with " *
+                  "status $ini_nlp_status"
+            model.status = ini_nlp_status
+        end
+        return
+    end
+    flush(stdout)
+
+    # If there is no integrality, exit early! We've already solved the NLP.
+    if isempty(model.int_indices)
+        model.status = ini_nlp_status
+        _clean_up_algorithm(model, start, mip_time, nlp_time)
+        return
+    end
+    # Set a VariablePrimalStart if supported by the solver
+    if !isnothing(cont_solution) &&
+       MOI.supports(
+           model.mip_optimizer,
+           MOI.VariablePrimalStart(),
+           MOI.VariableIndex,
+       ) &&
+       all(isfinite, cont_solution)
+        MOI.set(
+            model.mip_optimizer,
+            MOI.VariablePrimalStart(),
+            model.mip_variables,
+            cont_solution,
+        )
+
+        if !isnothing(model.nlp_obj_var)
+            MOI.set(
+                model.mip_optimizer,
+                MOI.VariablePrimalStart(),
+                model.nlp_obj_var,
+                cont_obj,
+            )
+        end
+    end
+    algorithm = if model.mip_solver_drives
+        _MIPSolverDrivenAlgorithm()
+    else
+        _IterativeAlgorithm()
+    end
+    mip_time, nlp_time = _run_algorithm(
+        algorithm,
+        model,
+        start,
+        mip_time,
+        nlp_time,
+        jac_IJ,
+        jac_V,
+        grad_f,
+        is_max,
+    )
+    flush(stdout)
+    _clean_up_algorithm(model, start, mip_time, nlp_time)
+    return
+end
+
+function _update_gap(model::Optimizer, is_max::Bool)
+    # Update gap if best bound and best objective are finite
     if isfinite(model.objective_value) && isfinite(model.objective_bound)
         model.objective_gap =
             (model.objective_value - model.objective_bound) /
@@ -473,8 +477,8 @@ function update_gap(model::Optimizer, is_max::Bool)
     return
 end
 
-function check_progress(model::Optimizer, prev_mip_solution)
-    # finish if optimal or cycling integer solutions
+function _check_progress(model::Optimizer, prev_mip_solution)
+    # Finish if optimal or cycling integer solutions.
     int_ind = collect(model.int_indices)
     if model.objective_gap <= model.rel_gap
         model.status = MOI.LOCALLY_SOLVED
@@ -492,7 +496,12 @@ function check_progress(model::Optimizer, prev_mip_solution)
     return false
 end
 
-function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
+function _fix_int_vars(
+    optimizer::MOI.ModelLike,
+    vars,
+    mip_solution,
+    int_indices,
+)
     for i in int_indices
         vi = vars[i]
         idx = vi.value
@@ -514,17 +523,16 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
 end
 
 # solve NLP subproblem defined by integer assignment
-function solve_subproblem(model::Optimizer, comp::Function)
-    fix_int_vars(
+function _solve_subproblem(model::Optimizer, comp::Function)
+    _fix_int_vars(
         model.cont_optimizer,
         model.cont_variables,
         model.mip_solution,
         model.int_indices,
     )
     MOI.optimize!(model.cont_optimizer)
-
     if MOI.get(model.cont_optimizer, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT
-        # subproblem is feasible, check if solution is new incumbent
+        # Subproblem is feasible, check if solution is new incumbent
         nlp_objective_value =
             MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
         nlp_solution = MOI.get(
@@ -537,11 +545,10 @@ function solve_subproblem(model::Optimizer, comp::Function)
             copyto!(model.incumbent, nlp_solution)
             model.new_incumb = true
         end
-
         return nlp_solution
     end
-
-    # assume subproblem is infeasible, so solve infeasible recovery NLP subproblem
+    # Assume subproblem is infeasible, so solve infeasible recovery NLP
+    # subproblem.
     if (
            !isnothing(model.nlp_block) &&
            !isempty(model.nlp_block.constraint_bounds) &&
@@ -551,27 +558,19 @@ function solve_subproblem(model::Optimizer, comp::Function)
        (!isempty(model.quad_GT) && isnothing(model.quad_GT_slack))
         if !isnothing(model.nl_slack_variables)
             obj = MOI.ScalarAffineFunction(
-                [
-                    MOI.ScalarAffineTerm(1.0, x) for
-                    x in model.nl_slack_variables
-                ],
+                MOI.ScalarAffineTerm.(1.0, model.nl_slack_variables),
                 0.0,
             )
         else
-            obj = MOI.ScalarAffineFunction(
-                Array{MOI.ScalarAffineTerm{Float64}}([]),
-                0.0,
-            )
+            obj = MOI.ScalarAffineFunction(MOI.ScalarAffineTerm{Float64}[], 0.0)
         end
-
         function _add_to_obj(vi::MOI.VariableIndex)
             return push!(obj.terms, MOI.ScalarAffineTerm(1.0, vi))
         end
-
         if !isnothing(model.nlp_block) &&
            !isempty(model.nlp_block.constraint_bounds)
             bounds = copy(model.nlp_block.constraint_bounds)
-            model.infeasible_evaluator = InfeasibleNLPEvaluator(
+            model.infeasible_evaluator = _InfeasibleNLPEvaluator(
                 model.nlp_block.evaluator,
                 length(model.infeasible_variables),
                 falses(length(model.nlp_block.constraint_bounds)),
@@ -580,7 +579,6 @@ function solve_subproblem(model::Optimizer, comp::Function)
                 _infeasible(model),
                 length(model.nlp_block.constraint_bounds),
             )
-
             for i in eachindex(model.nlp_block.constraint_bounds)
                 _add_to_obj(model.nl_slack_variables[i])
                 push!(bounds, MOI.NLPBoundsPair(0.0, Inf))
@@ -589,16 +587,15 @@ function solve_subproblem(model::Optimizer, comp::Function)
                     model.infeasible_evaluator.minus[i] = true
                 end
             end
-
             MOI.set(
                 _infeasible(model),
                 MOI.NLPBlock(),
                 MOI.NLPBlockData(bounds, model.infeasible_evaluator, false),
             )
         end
-
-        # we need to add quadratic variables afterwards as `InfeasibleNLPEvaluator`
-        # assumes the original variables are directly followed by the NL slacks
+        # We need to add quadratic variables afterwards because
+        # `_InfeasibleNLPEvaluator` assumes the original variables are directly
+        # followed by the NL slacks.
         if !isempty(model.quad_LT)
             model.quad_LT_slack =
                 MOI.add_variables(_infeasible(model), length(model.quad_LT))
@@ -635,8 +632,7 @@ function solve_subproblem(model::Optimizer, comp::Function)
         end
         MOI.set(_infeasible(model), MOI.ObjectiveFunction{typeof(obj)}(), obj)
     end
-
-    fix_int_vars(
+    _fix_int_vars(
         model.infeasible_optimizer,
         model.infeasible_variables,
         model.mip_solution,
@@ -648,20 +644,19 @@ function solve_subproblem(model::Optimizer, comp::Function)
         model.infeasible_variables,
         model.mip_solution,
     )
-
     if !isnothing(model.nlp_block) &&
        !isempty(model.nlp_block.constraint_bounds)
         fill!(model.infeasible_evaluator.minus, false)
         g = zeros(length(model.nlp_block.constraint_bounds))
         MOI.eval_constraint(model.nlp_block.evaluator, g, model.mip_solution)
-
         for i in eachindex(model.nlp_block.constraint_bounds)
             bounds = model.nlp_block.constraint_bounds[i]
-            val = (
-                model.infeasible_evaluator.minus[i] ?
-                (g[i] - bounds.upper) : (bounds.lower - g[i])
-            )
-            # sign of the slack changes if the constraint direction changes
+            val = if model.infeasible_evaluator.minus[i]
+                g[i] - bounds.upper
+            else
+                bounds.lower - g[i]
+            end
+            # Sign of the slack changes if the constraint direction changes.
             MOI.set(
                 _infeasible(model),
                 MOI.VariablePrimalStart(),
@@ -670,10 +665,9 @@ function solve_subproblem(model::Optimizer, comp::Function)
             )
         end
     end
-
     for i in eachindex(model.quad_LT)
         val =
-            eval_func(model.mip_solution, model.quad_LT[i][1]) -
+            _eval_func(model.mip_solution, model.quad_LT[i][1]) -
             model.quad_LT[i][2].upper
         MOI.set(
             _infeasible(model),
@@ -682,11 +676,10 @@ function solve_subproblem(model::Optimizer, comp::Function)
             max(0.0, val),
         )
     end
-
     for i in eachindex(model.quad_GT)
         val =
             model.quad_GT[i][2].lower -
-            eval_func(model.mip_solution, model.quad_GT[i][1])
+            _eval_func(model.mip_solution, model.quad_GT[i][1])
         MOI.set(
             _infeasible(model),
             MOI.VariablePrimalStart(),
@@ -694,14 +687,11 @@ function solve_subproblem(model::Optimizer, comp::Function)
             max(0.0, val),
         )
     end
-
-    # solve
     MOI.optimize!(model.infeasible_optimizer)
     status = MOI.get(model.infeasible_optimizer, MOI.PrimalStatus())
     if status != MOI.FEASIBLE_POINT
         @warn "Infeasible NLP problem terminated with primal status: $status"
     end
-
     return MOI.get(
         model.infeasible_optimizer,
         MOI.VariablePrimal(),
@@ -710,9 +700,9 @@ function solve_subproblem(model::Optimizer, comp::Function)
 end
 
 # print objective gap information for iterative
-function printgap(model::Optimizer, start)
+function _print_gap(model::Optimizer, start)
     if model.log_level >= 1
-        if (model.num_iters_or_callbacks == 1) || (model.log_level >= 2)
+        if model.num_iters_or_callbacks == 1 || model.log_level >= 2
             Printf.@printf(
                 "\n%-5s | %-14s | %-14s | %-11s | %-11s\n",
                 "Iter.",
@@ -732,7 +722,7 @@ function printgap(model::Optimizer, start)
                 time() - start,
             )
         else
-            obj_gap = (isnan(model.objective_gap) ? "Inf" : ">1000")
+            obj_gap = isnan(model.objective_gap) ? "Inf" : ">1000"
             Printf.@printf(
                 "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n",
                 model.num_iters_or_callbacks,
@@ -750,7 +740,7 @@ end
 
 # utilities:
 
-function eval_func(values, func)
+function _eval_func(values, func)
     return MOI.Utilities.eval_variables(vi -> values[vi.value], func)
 end
 

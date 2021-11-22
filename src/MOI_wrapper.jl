@@ -89,9 +89,9 @@ function _map(variables::Vector{MOI.VariableIndex}, x)
     return MOI.Utilities.map_indices(vi -> variables[vi.value], x)
 end
 
-is_discrete(::Type{<:MOI.AbstractSet}) = false
+_is_discrete(::Type{<:MOI.AbstractSet}) = false
 
-function is_discrete(
+function _is_discrete(
     ::Type{<:Union{MOI.Integer,MOI.ZeroOne,MOI.Semiinteger{Float64}}},
 )
     return true
@@ -102,10 +102,8 @@ function MOI.supports_constraint(
     F::Type{MOI.VariableIndex},
     S::Type{<:MOI.AbstractScalarSet},
 )
-    return (
-        MOI.supports_constraint(_mip(model), F, S) &&
-        (is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
-    )
+    return MOI.supports_constraint(_mip(model), F, S) &&
+           (_is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
 end
 
 function MOI.add_constraint(
@@ -113,7 +111,7 @@ function MOI.add_constraint(
     func::MOI.VariableIndex,
     set::MOI.AbstractScalarSet,
 )
-    if is_discrete(typeof(set))
+    if _is_discrete(typeof(set))
         push!(model.int_indices, func.value)
     else
         MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
