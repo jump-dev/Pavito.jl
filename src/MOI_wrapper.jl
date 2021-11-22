@@ -8,9 +8,13 @@
  MathOptInterface wrapper
 =========================================================#
 
-MOI.is_empty(model::Optimizer) =
-    (isnothing(model.mip_optimizer) || MOI.is_empty(model.mip_optimizer)) &&
-    (isnothing(model.cont_optimizer) || MOI.is_empty(model.cont_optimizer))
+function MOI.is_empty(model::Optimizer)
+    return (
+        isnothing(model.mip_optimizer) || MOI.is_empty(model.mip_optimizer)
+    ) && (
+        isnothing(model.cont_optimizer) || MOI.is_empty(model.cont_optimizer)
+    )
+end
 
 function MOI.empty!(model::Optimizer)
     model.mip_optimizer = nothing
@@ -29,8 +33,8 @@ function MOI.empty!(model::Optimizer)
 
     model.nlp_block = nothing
     model.objective = nothing
-    model.quad_LT = Tuple{SQF, LT}[]
-    model.quad_GT = Tuple{SQF, GT}[]
+    model.quad_LT = Tuple{SQF,LT}[]
+    model.quad_GT = Tuple{SQF,GT}[]
     model.incumbent = Float64[]
     model.status = MOI.OPTIMIZE_NOT_CALLED
     return
@@ -40,8 +44,9 @@ MOI.get(::Optimizer, ::MOI.SolverName) = "Pavito"
 
 MOI.supports_incremental_interface(::Optimizer) = true
 
-MOI.copy_to(model::Optimizer, src::MOI.ModelLike) =
-    MOI.Utilities.default_copy_to(model, src)
+function MOI.copy_to(model::Optimizer, src::MOI.ModelLike)
+    return MOI.Utilities.default_copy_to(model, src)
+end
 
 MOI.get(model::Optimizer, ::MOI.NumberOfVariables) = length(model.incumbent)
 
@@ -67,23 +72,27 @@ function MOI.set(model::Optimizer, attr::MOI.VariablePrimalStart, vi::VI, value)
     return
 end
 
-_map(variables::Vector{VI}, x) =
-    MOI.Utilities.map_indices(vi -> variables[vi.value], x)
+function _map(variables::Vector{VI}, x)
+    return MOI.Utilities.map_indices(vi -> variables[vi.value], x)
+end
 
 is_discrete(::Type{<:MOI.AbstractSet}) = false
-is_discrete(::Type{<:Union{
-    MOI.Integer,
-    MOI.ZeroOne,
-    MOI.Semiinteger{Float64},
-    }}
-) = true
+function is_discrete(
+    ::Type{<:Union{MOI.Integer,MOI.ZeroOne,MOI.Semiinteger{Float64}}},
+)
+    return true
+end
 
-MOI.supports_constraint(
+function MOI.supports_constraint(
     model::Optimizer,
     F::Type{VI},
     S::Type{<:MOI.AbstractScalarSet},
-) = (MOI.supports_constraint(_mip(model), F, S) &&
-    (is_discrete(S) || MOI.supports_constraint(_cont(model), F, S)))
+)
+    return (
+        MOI.supports_constraint(_mip(model), F, S) &&
+        (is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
+    )
+end
 
 function MOI.add_constraint(
     model::Optimizer,
@@ -94,43 +103,54 @@ function MOI.add_constraint(
         push!(model.int_indices, func.value)
     else
         MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
-        MOI.add_constraint(_infeasible(model),
-            _map(model.infeasible_variables, func), set)
+        MOI.add_constraint(
+            _infeasible(model),
+            _map(model.infeasible_variables, func),
+            set,
+        )
     end
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
 
-MOI.supports_constraint(
+function MOI.supports_constraint(
     model::Optimizer,
     F::Type{SQF},
-    S::Type{<:Union{LT, GT}},
-) = MOI.supports_constraint(_cont(model), F, S)
+    S::Type{<:Union{LT,GT}},
+)
+    return MOI.supports_constraint(_cont(model), F, S)
+end
 
 function MOI.add_constraint(model::Optimizer, func::SQF, set::LT)
     _clean_slacks(model)
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
     push!(model.quad_LT, (MOI.Utilities.canonical(func), copy(set)))
-    return MOI.ConstraintIndex{typeof(func), typeof(set)}(
-        length(model.quad_LT))
+    return MOI.ConstraintIndex{typeof(func),typeof(set)}(length(model.quad_LT))
 end
 
 function MOI.add_constraint(model::Optimizer, func::SQF, set::GT)
     _clean_slacks(model)
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
     push!(model.quad_GT, (MOI.Utilities.canonical(func), copy(set)))
-    return MOI.ConstraintIndex{typeof(func), typeof(set)}(
-        length(model.quad_GT))
+    return MOI.ConstraintIndex{typeof(func),typeof(set)}(length(model.quad_GT))
 end
 
-MOI.get(model::Optimizer, attr::MOI.NumberOfConstraints{SQF, <:Union{LT, GT}}) =
-    MOI.get(_cont(model), attr)
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.NumberOfConstraints{SQF,<:Union{LT,GT}},
+)
+    return MOI.get(_cont(model), attr)
+end
 
-MOI.supports_constraint(
+function MOI.supports_constraint(
     model::Optimizer,
     F::Type{<:MOI.AbstractFunction},
     S::Type{<:MOI.AbstractSet},
-) = (MOI.supports_constraint(_mip(model), F, S) &&
-    MOI.supports_constraint(_cont(model), F, S))
+)
+    return (
+        MOI.supports_constraint(_mip(model), F, S) &&
+        MOI.supports_constraint(_cont(model), F, S)
+    )
+end
 
 function MOI.add_constraint(
     model::Optimizer,
@@ -138,13 +158,17 @@ function MOI.add_constraint(
     set::MOI.AbstractSet,
 )
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
-    MOI.add_constraint(_infeasible(model),
-        _map(model.infeasible_variables, func), set)
+    MOI.add_constraint(
+        _infeasible(model),
+        _map(model.infeasible_variables, func),
+        set,
+    )
     return MOI.add_constraint(_mip(model), _map(model.mip_variables, func), set)
 end
 
-MOI.get(model::Optimizer, attr::MOI.NumberOfConstraints) =
-    MOI.get(_mip(model), attr)
+function MOI.get(model::Optimizer, attr::MOI.NumberOfConstraints)
+    return MOI.get(_mip(model), attr)
+end
 
 MOI.supports(::Optimizer, ::MOI.NLPBlock) = true
 
@@ -152,11 +176,13 @@ function MOI.set(model::Optimizer, attr::MOI.NLPBlock, block::MOI.NLPBlockData)
     _clean_slacks(model)
     model.nlp_block = block
     if !MOI.supports(_cont(model), MOI.NLPBlock())
-        error("Continuous solver (`cont_solver`) is not a derivative-based " *
+        error(
+            "Continuous solver (`cont_solver`) is not a derivative-based " *
             "NLP solver recognized by MathOptInterface (try Pajarito solver " *
-            "if your continuous solver is conic)")
+            "if your continuous solver is conic)",
+        )
     end
-    MOI.set(_cont(model), attr, block)
+    return MOI.set(_cont(model), attr, block)
 end
 
 MOI.supports(model::Optimizer, attr::MOI.ObjectiveSense) = true
@@ -166,53 +192,61 @@ function MOI.set(model::Optimizer, attr::MOI.ObjectiveSense, sense)
         model.objective = nothing
     end
     MOI.set(_mip(model), attr, sense)
-    MOI.set(_cont(model), attr, sense)
+    return MOI.set(_cont(model), attr, sense)
 end
 
 MOI.get(model::Optimizer, attr::MOI.ObjectiveSense) = MOI.get(_mip(model), attr)
 
-MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction) =
-    MOI.supports(_mip(model), attr) && MOI.supports(_cont(model), attr)
+function MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction)
+    return MOI.supports(_mip(model), attr) && MOI.supports(_cont(model), attr)
+end
 
-MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction{SQF}) =
-    MOI.supports(_cont(model), attr)
+function MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction{SQF})
+    return MOI.supports(_cont(model), attr)
+end
 
 function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction, func)
     # make a copy (as the user might modify it)
     model.objective = copy(func)
     MOI.set(_mip(model), attr, _map(model.mip_variables, func))
-    MOI.set(_cont(model), attr, _map(model.cont_variables, func))
+    return MOI.set(_cont(model), attr, _map(model.cont_variables, func))
 end
 
 function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction{SQF}, func::SQF)
     # make a copy (as the user might modify it) and canonicalize
     model.objective = MOI.Utilities.canonical(func)
-    MOI.set(_cont(model), attr, _map(model.cont_variables, func))
+    return MOI.set(_cont(model), attr, _map(model.cont_variables, func))
 end
 
-MOI.get(model::Optimizer, param::MOI.RawOptimizerAttribute) =
-    getproperty(model, Symbol(param.name))
+function MOI.get(model::Optimizer, param::MOI.RawOptimizerAttribute)
+    return getproperty(model, Symbol(param.name))
+end
 
-MOI.supports(::Optimizer, param::MOI.RawOptimizerAttribute) =
-    (Symbol(param.name) in fieldnames(Optimizer))
+function MOI.supports(::Optimizer, param::MOI.RawOptimizerAttribute)
+    return (Symbol(param.name) in fieldnames(Optimizer))
+end
 
-MOI.set(model::Optimizer, param::MOI.RawOptimizerAttribute, value) =
-    setproperty!(model, Symbol(param.name), value)
+function MOI.set(model::Optimizer, param::MOI.RawOptimizerAttribute, value)
+    return setproperty!(model, Symbol(param.name), value)
+end
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
 
-MOI.set(model::Optimizer, ::MOI.Silent, value::Bool) =
-    (model.log_level = (value ? 0 : 1))
+function MOI.set(model::Optimizer, ::MOI.Silent, value::Bool)
+    return (model.log_level = (value ? 0 : 1))
+end
 
 MOI.get(model::Optimizer, ::MOI.Silent) = (model.log_level <= 0)
 
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = true
 
-MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value::Nothing) =
-    MOI.set(model, MOI.RawOptimizerAttribute("timeout"), Inf)
+function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value::Nothing)
+    return MOI.set(model, MOI.RawOptimizerAttribute("timeout"), Inf)
+end
 
-MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value) =
-    MOI.set(model, MOI.RawOptimizerAttribute("timeout"), value)
+function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value)
+    return MOI.set(model, MOI.RawOptimizerAttribute("timeout"), value)
+end
 
 function MOI.get(model::Optimizer, ::MOI.TimeLimitSec)
     value = MOI.get(model, MOI.RawOptimizerAttribute("timeout"))
@@ -253,8 +287,9 @@ end
 
 MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
 
-MOI.get(model::Optimizer, ::MOI.ResultCount) =
-    (MOI.get(model, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT ? 1 : 0)
+function MOI.get(model::Optimizer, ::MOI.ResultCount)
+    return (MOI.get(model, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT ? 1 : 0)
+end
 
 # utilities:
 
@@ -264,16 +299,18 @@ function _mip(model::Optimizer)
             error("No MIP solver specified (set `mip_solver` attribute)\n")
         end
 
-        model.mip_optimizer = MOI.instantiate(model.mip_solver,
-            with_bridge_type = Float64)
+        model.mip_optimizer =
+            MOI.instantiate(model.mip_solver, with_bridge_type = Float64)
 
-        supports_lazy = MOI.supports(model.mip_optimizer,
-            MOI.LazyConstraintCallback())
+        supports_lazy =
+            MOI.supports(model.mip_optimizer, MOI.LazyConstraintCallback())
         if isnothing(model.mip_solver_drives)
             model.mip_solver_drives = supports_lazy
         elseif model.mip_solver_drives && !supports_lazy
-            error("MIP solver (`mip_solver`) does not support lazy constraint " *
-                "callbacks (cannot set `mip_solver_drives` attribute to `true`)")
+            error(
+                "MIP solver (`mip_solver`) does not support lazy constraint " *
+                "callbacks (cannot set `mip_solver_drives` attribute to `true`)",
+            )
         end
     end
     return model.mip_optimizer
@@ -281,9 +318,12 @@ end
 
 function _new_cont(optimizer_constructor)
     if isnothing(optimizer_constructor)
-        error("No continuous NLP solver specified (set `cont_solver` attribute)")
+        error(
+            "No continuous NLP solver specified (set `cont_solver` attribute)",
+        )
     end
-    optimizer = MOI.instantiate(optimizer_constructor, with_bridge_type = Float64)
+    optimizer =
+        MOI.instantiate(optimizer_constructor, with_bridge_type = Float64)
     return optimizer
 end
 

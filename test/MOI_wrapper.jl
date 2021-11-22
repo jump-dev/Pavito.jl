@@ -8,11 +8,7 @@
  MathOptInterface.Test tests
 =========================================================#
 
-function run_moi_tests(
-    msd::Bool,
-    mip_solver,
-    cont_solver,
-)
+function run_moi_tests(msd::Bool, mip_solver, cont_solver)
     pavito = Pavito.Optimizer()
     MOI.set(pavito, MOI.Silent(), true)
     MOI.set(pavito, MOI.RawOptimizerAttribute("mip_solver_drives"), msd)
@@ -69,7 +65,7 @@ function run_moi_tests(
         "test_linear_FEASIBILITY_SENSE",
     ]
 
-    MOIT.runtests(
+    return MOIT.runtests(
         model,
         config,
         # include = [],

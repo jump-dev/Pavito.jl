@@ -24,14 +24,16 @@ function add_cut(
     dgc_nzv,
     set,
     callback_data,
-    )
+)
     Δ = 0.0
     for i in eachindex(dgc_idx)
         Δ += dgc_nzv[i] * cont_solution[dgc_idx[i]]
     end
 
-    safs = [MOI.ScalarAffineTerm(dgc_nzv[i], model.mip_variables[dgc_idx[i]])
-        for i in eachindex(dgc_idx)]
+    safs = [
+        MOI.ScalarAffineTerm(dgc_nzv[i], model.mip_variables[dgc_idx[i]])
+        for i in eachindex(dgc_idx)
+    ]
     func = MOI.ScalarAffineFunction(safs, 0.0)
     MOI.Utilities.canonicalize!(func)
     set = MOI.Utilities.shift_constant(set, Δ - gc)
@@ -40,18 +42,18 @@ function add_cut(
         if isnothing(callback_data)
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
-            _add_lazy_constraint(model, callback_data, func, set,
-                model.mip_solution)
+            _add_lazy_constraint(
+                model,
+                callback_data,
+                func,
+                set,
+                model.mip_solution,
+            )
         end
     end
 end
 
-function add_quad_cuts(
-    model::Optimizer,
-    cont_solution,
-    cons,
-    callback_data,
-    )
+function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
     for (func, set) in cons
         gc = eval_func(cont_solution, func)
 
@@ -63,14 +65,18 @@ function add_quad_cuts(
         end
         for term in func.quadratic_terms
             push!(dgc_idx, term.variable_1.value)
-            push!(dgc_nzv, term.coefficient *
-                cont_solution[term.variable_2.value])
+            push!(
+                dgc_nzv,
+                term.coefficient * cont_solution[term.variable_2.value],
+            )
             # if variables are the same, the coefficient is already multiplied by
             # 2 by definition of `SQF`
             if term.variable_1 != term.variable_2
                 push!(dgc_idx, term.variable_2.value)
-                push!(dgc_nzv, term.coefficient *
-                    cont_solution[term.variable_1.value])
+                push!(
+                    dgc_nzv,
+                    term.coefficient * cont_solution[term.variable_1.value],
+                )
             end
         end
 
@@ -86,14 +92,17 @@ function add_cuts(
     grad_f,
     is_max,
     callback_data = nothing,
-    )
+)
     if !isnothing(model.nlp_block)
         # eval g and jac_g at MIP solution
         num_constrs = length(model.nlp_block.constraint_bounds)
         g = zeros(num_constrs)
         MOI.eval_constraint(model.nlp_block.evaluator, g, cont_solution)
-        MOI.eval_constraint_jacobian(model.nlp_block.evaluator, jac_V,
-            cont_solution)
+        MOI.eval_constraint_jacobian(
+            model.nlp_block.evaluator,
+            jac_V,
+            cont_solution,
+        )
 
         # create rows corresponding to constraints in sparse format
         varidx_new = [zeros(Int, 0) for i in 1:num_constrs]
@@ -109,8 +118,15 @@ function add_cuts(
         for i in 1:num_constrs
             # create supporting hyperplane
             set = _bound_set(model, i)
-            add_cut(model, cont_solution, g[i], varidx_new[i], coef_new[i],
-                set, callback_data)
+            add_cut(
+                model,
+                cont_solution,
+                g[i],
+                varidx_new[i],
+                coef_new[i],
+                set,
+                callback_data,
+            )
         end
     end
     add_quad_cuts(model, cont_solution, model.quad_LT, callback_data)
@@ -123,7 +139,7 @@ function add_cuts(
 
     # create objective cut
     if (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ||
-        model.objective isa SQF
+       model.objective isa SQF
         f = eval_objective(model, cont_solution)
         eval_objective_gradient(model, grad_f, cont_solution)
 
@@ -132,8 +148,10 @@ function add_cuts(
         for j in eachindex(grad_f)
             if !iszero(grad_f[j])
                 constant += grad_f[j] * cont_solution[j]
-                push!(func.terms, MOI.ScalarAffineTerm(grad_f[j],
-                    model.mip_variables[j]))
+                push!(
+                    func.terms,
+                    MOI.ScalarAffineTerm(grad_f[j], model.mip_variables[j]),
+                )
             end
         end
         set = (is_max ? GT(constant) : LT(constant))
@@ -141,10 +159,18 @@ function add_cuts(
         if isnothing(callback_data)
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
-            nlp_obj_var = MOI.get(model.mip_optimizer,
-                MOI.CallbackVariablePrimal(callback_data), model.nlp_obj_var)
-            _add_lazy_constraint(model, callback_data, func, set,
-                vcat(model.mip_solution, nlp_obj_var))
+            nlp_obj_var = MOI.get(
+                model.mip_optimizer,
+                MOI.CallbackVariablePrimal(callback_data),
+                model.nlp_obj_var,
+            )
+            _add_lazy_constraint(
+                model,
+                callback_data,
+                func,
+                set,
+                vcat(model.mip_solution, nlp_obj_var),
+            )
         end
     end
 
@@ -155,8 +181,12 @@ function _add_lazy_constraint(model, callback_data, func, set, mip_solution)
     # GLPK does not check whether the new cut is redundant, so we filter it out
     # see https://github.com/jump-dev/GLPK.jl/issues/153
     if !approx_in(eval_func(mip_solution, func), set)
-        MOI.submit(model.mip_optimizer, MOI.LazyConstraint(callback_data),
-            func, set)
+        MOI.submit(
+            model.mip_optimizer,
+            MOI.LazyConstraint(callback_data),
+            func,
+            set,
+        )
     end
     return
 end
@@ -175,12 +205,12 @@ function eval_gradient(func::SQF, grad_f, values)
         grad_f[term.variable.value] += term.coefficient
     end
     for term in func.quadratic_terms
-        grad_f[term.variable_1.value] += term.coefficient *
-            values[term.variable_2.value]
+        grad_f[term.variable_1.value] +=
+            term.coefficient * values[term.variable_2.value]
         # if variables are the same, the coefficient is already multiplied by 2
         if term.variable_1 != term.variable_2
-            grad_f[term.variable_2.value] += term.coefficient *
-                values[term.variable_1.value]
+            grad_f[term.variable_2.value] +=
+                term.coefficient * values[term.variable_1.value]
         end
     end
 end
@@ -197,7 +227,9 @@ end
 _is_approx(x, y) = isapprox(x, y, atol = Base.rtoldefault(Float64))
 
 approx_in(value, set::MOI.EqualTo) = _is_approx(value, MOI.constant(set))
-approx_in(value, set::LT) =
-    (_is_approx(value, MOI.constant(set)) || value < MOI.constant(set))
-approx_in(value, set::GT) =
-    (_is_approx(value, MOI.constant(set)) || value > MOI.constant(set))
+function approx_in(value, set::LT)
+    return (_is_approx(value, MOI.constant(set)) || value < MOI.constant(set))
+end
+function approx_in(value, set::GT)
+    return (_is_approx(value, MOI.constant(set)) || value > MOI.constant(set))
+end

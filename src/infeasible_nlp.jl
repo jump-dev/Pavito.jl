@@ -14,16 +14,21 @@ struct InfeasibleNLPEvaluator <: MOI.AbstractNLPEvaluator
     minus::BitVector
 end
 
-MOI.initialize(d::InfeasibleNLPEvaluator, requested_features::Vector{Symbol}) =
-    MOI.initialize(d.d, requested_features)
+function MOI.initialize(
+    d::InfeasibleNLPEvaluator,
+    requested_features::Vector{Symbol},
+)
+    return MOI.initialize(d.d, requested_features)
+end
 
-MOI.features_available(d::InfeasibleNLPEvaluator) =
-    intersect([:Grad, :Jac, :Hess], MOI.features_available(d.d))
+function MOI.features_available(d::InfeasibleNLPEvaluator)
+    return intersect([:Grad, :Jac, :Hess], MOI.features_available(d.d))
+end
 
 function MOI.eval_constraint(d::InfeasibleNLPEvaluator, g, x)
     MOI.eval_constraint(d.d, g, x[1:d.num_variables])
     for i in eachindex(d.minus)
-        g[i] -= sign(d.minus[i]) * x[d.num_variables + i]
+        g[i] -= sign(d.minus[i]) * x[d.num_variables+i]
     end
     return
 end
@@ -40,7 +45,7 @@ function MOI.eval_constraint_jacobian(d::InfeasibleNLPEvaluator, J, x)
     MOI.eval_constraint_jacobian(d.d, J, x[1:d.num_variables])
     k = length(J) - length(d.minus)
     for i in eachindex(d.minus)
-        J[k + i] = (d.minus[i] ? -1.0 : 1.0)
+        J[k+i] = (d.minus[i] ? -1.0 : 1.0)
     end
     return
 end
@@ -49,8 +54,10 @@ end
 # objective is zero and the hessian of the constraints is unaffected;
 # also set `σ = 0.0` to absorb the contribution of the hessian of the objective
 
-MOI.hessian_lagrangian_structure(d::InfeasibleNLPEvaluator) =
-    MOI.hessian_lagrangian_structure(d.d)
+function MOI.hessian_lagrangian_structure(d::InfeasibleNLPEvaluator)
+    return MOI.hessian_lagrangian_structure(d.d)
+end
 
-MOI.eval_hessian_lagrangian(d::InfeasibleNLPEvaluator, H, x, σ, μ) =
-    MOI.eval_hessian_lagrangian(d.d, H, x[1:d.num_variables], 0.0, μ)
+function MOI.eval_hessian_lagrangian(d::InfeasibleNLPEvaluator, H, x, σ, μ)
+    return MOI.eval_hessian_lagrangian(d.d, H, x[1:d.num_variables], 0.0, μ)
+end
