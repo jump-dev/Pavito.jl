@@ -86,7 +86,7 @@ function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
     return
 end
 
-function add_cuts(
+function _add_cuts(
     model::Optimizer,
     cont_solution,
     jac_IJ,
