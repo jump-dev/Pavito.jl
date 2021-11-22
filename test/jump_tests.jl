@@ -47,7 +47,7 @@ function run_minlptests(
         solver,
         exclude = String[
             # ======================= Unexpected failures ======================
-            # LOCALLY_SOLVED  instead of LOCALLY_INFEASIBLE
+            # LOCALLY_SOLVED instead of LOCALLY_INFEASIBLE for MSD algorithm
             "007_020",
             # ======================== Expected failures =======================
             # Nonconvex: contains sin(x)^2
