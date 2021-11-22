@@ -270,7 +270,7 @@ function _run_algorithm(
         mip_time += time() - start_mip
         # Finish if MIP was infeasible or if problematic status
         if mip_status in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
-            model.status = MOI.INFEASIBLE
+            model.status = MOI.LOCALLY_INFEASIBLE
             break
         elseif (mip_status != MOI.OPTIMAL) && (mip_status != MOI.ALMOST_OPTIMAL)
             @warn "MIP solver status was $mip_status, terminating Pavito"
