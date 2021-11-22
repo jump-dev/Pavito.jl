@@ -90,6 +90,7 @@ function _map(variables::Vector{MOI.VariableIndex}, x)
 end
 
 is_discrete(::Type{<:MOI.AbstractSet}) = false
+
 function is_discrete(
     ::Type{<:Union{MOI.Integer,MOI.ZeroOne,MOI.Semiinteger{Float64}}},
 )
@@ -206,7 +207,8 @@ function MOI.set(model::Optimizer, attr::MOI.NLPBlock, block::MOI.NLPBlockData)
             "if your continuous solver is conic)",
         )
     end
-    return MOI.set(_cont(model), attr, block)
+    MOI.set(_cont(model), attr, block)
+    return
 end
 
 MOI.supports(model::Optimizer, attr::MOI.ObjectiveSense) = true
@@ -216,7 +218,8 @@ function MOI.set(model::Optimizer, attr::MOI.ObjectiveSense, sense)
         model.objective = nothing
     end
     MOI.set(_mip(model), attr, sense)
-    return MOI.set(_cont(model), attr, sense)
+    MOI.set(_cont(model), attr, sense)
+    return
 end
 
 MOI.get(model::Optimizer, attr::MOI.ObjectiveSense) = MOI.get(_mip(model), attr)
@@ -236,7 +239,8 @@ function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction, func)
     # make a copy (as the user might modify it)
     model.objective = copy(func)
     MOI.set(_mip(model), attr, _map(model.mip_variables, func))
-    return MOI.set(_cont(model), attr, _map(model.cont_variables, func))
+    MOI.set(_cont(model), attr, _map(model.cont_variables, func))
+    return
 end
 
 function MOI.set(
@@ -246,7 +250,8 @@ function MOI.set(
 )
     # make a copy (as the user might modify it) and canonicalize
     model.objective = MOI.Utilities.canonical(func)
-    return MOI.set(_cont(model), attr, _map(model.cont_variables, func))
+    MOI.set(_cont(model), attr, _map(model.cont_variables, func))
+    return
 end
 
 function MOI.get(model::Optimizer, param::MOI.RawOptimizerAttribute)
@@ -258,13 +263,15 @@ function MOI.supports(::Optimizer, param::MOI.RawOptimizerAttribute)
 end
 
 function MOI.set(model::Optimizer, param::MOI.RawOptimizerAttribute, value)
-    return setproperty!(model, Symbol(param.name), value)
+    setproperty!(model, Symbol(param.name), value)
+    return
 end
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
 
 function MOI.set(model::Optimizer, ::MOI.Silent, value::Bool)
-    return (model.log_level = (value ? 0 : 1))
+    model.log_level = value ? 0 : 1
+    return
 end
 
 MOI.get(model::Optimizer, ::MOI.Silent) = (model.log_level <= 0)
@@ -272,16 +279,18 @@ MOI.get(model::Optimizer, ::MOI.Silent) = (model.log_level <= 0)
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = true
 
 function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value::Nothing)
-    return MOI.set(model, MOI.RawOptimizerAttribute("timeout"), Inf)
+    MOI.set(model, MOI.RawOptimizerAttribute("timeout"), Inf)
+    return
 end
 
 function MOI.set(model::Optimizer, ::MOI.TimeLimitSec, value)
-    return MOI.set(model, MOI.RawOptimizerAttribute("timeout"), value)
+    MOI.set(model, MOI.RawOptimizerAttribute("timeout"), value)
+    return
 end
 
 function MOI.get(model::Optimizer, ::MOI.TimeLimitSec)
     value = MOI.get(model, MOI.RawOptimizerAttribute("timeout"))
-    return (isfinite(value) ? value : nothing)
+    return isfinite(value) ? value : nothing
 end
 
 MOI.get(model::Optimizer, ::MOI.SolveTimeSec) = model.total_time
@@ -315,15 +324,14 @@ function MOI.get(model::Optimizer, attr::MOI.PrimalStatus)
         return MOI.FEASIBLE_POINT
     elseif term_status == MOI.ALMOST_LOCALLY_SOLVED
         return MOI.NEARLY_FEASIBLE_POINT
-    else
-        return MOI.NO_SOLUTION
     end
+    return MOI.NO_SOLUTION
 end
 
 MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
 
 function MOI.get(model::Optimizer, ::MOI.ResultCount)
-    return (MOI.get(model, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT ? 1 : 0)
+    return MOI.get(model, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT ? 1 : 0
 end
 
 # utilities:
@@ -394,4 +402,5 @@ function _clean_slacks(model::Optimizer)
         MOI.delete(_infeasible(model), model.quad_GT_infeasible_con)
         model.quad_GT_infeasible_con = nothing
     end
+    return
 end

@@ -18,7 +18,8 @@ function MOI.initialize(
     d::InfeasibleNLPEvaluator,
     requested_features::Vector{Symbol},
 )
-    return MOI.initialize(d.d, requested_features)
+    MOI.initialize(d.d, requested_features)
+    return
 end
 
 function MOI.features_available(d::InfeasibleNLPEvaluator)

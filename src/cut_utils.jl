@@ -51,6 +51,7 @@ function add_cut(
             )
         end
     end
+    return
 end
 
 function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
@@ -82,6 +83,7 @@ function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
 
         add_cut(model, cont_solution, gc, dgc_idx, dgc_nzv, set, callback_data)
     end
+    return
 end
 
 function add_cuts(
@@ -103,17 +105,14 @@ function add_cuts(
             jac_V,
             cont_solution,
         )
-
         # create rows corresponding to constraints in sparse format
         varidx_new = [zeros(Int, 0) for i in 1:num_constrs]
         coef_new = [zeros(0) for i in 1:num_constrs]
-
         for k in eachindex(jac_IJ)
             row, col = jac_IJ[k]
             push!(varidx_new[row], col)
             push!(coef_new[row], jac_V[k])
         end
-
         # create constraint cuts
         for i in 1:num_constrs
             # create supporting hyperplane
@@ -142,7 +141,6 @@ function add_cuts(
        model.objective isa MOI.ScalarQuadraticFunction{Float64}
         f = eval_objective(model, cont_solution)
         eval_objective_gradient(model, grad_f, cont_solution)
-
         constant = -f
         func = MOI.Utilities.operate(-, Float64, model.nlp_obj_var)
         for j in eachindex(grad_f)
@@ -158,7 +156,6 @@ function add_cuts(
             is_max ? MOI.GreaterThan{Float64}(constant) :
             MOI.LessThan{Float64}(constant)
         )
-
         if isnothing(callback_data)
             MOI.add_constraint(model.mip_optimizer, func, set)
         else
@@ -176,7 +173,6 @@ function add_cuts(
             )
         end
     end
-
     return
 end
 
@@ -220,6 +216,7 @@ function eval_gradient(
                 term.coefficient * values[term.variable_1.value]
         end
     end
+    return
 end
 
 function eval_objective_gradient(model::Optimizer, grad_f, values)
@@ -228,15 +225,18 @@ function eval_objective_gradient(model::Optimizer, grad_f, values)
     else
         eval_gradient(model.objective, grad_f, values)
     end
+    return
 end
 
 # `isapprox(0.0, 1e-16)` is false but `_is_approx(0.0, 1e-16)` is true.
 _is_approx(x, y) = isapprox(x, y, atol = Base.rtoldefault(Float64))
 
 approx_in(value, set::MOI.EqualTo) = _is_approx(value, MOI.constant(set))
+
 function approx_in(value, set::MOI.LessThan{Float64})
     return (_is_approx(value, MOI.constant(set)) || value < MOI.constant(set))
 end
+
 function approx_in(value, set::MOI.GreaterThan{Float64})
     return (_is_approx(value, MOI.constant(set)) || value > MOI.constant(set))
 end

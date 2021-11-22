@@ -464,6 +464,7 @@ function update_gap(model::Optimizer, is_max::Bool)
             model.objective_gap = -model.objective_gap
         end
     end
+    return
 end
 
 function check_progress(model::Optimizer, prev_mip_solution)
@@ -503,6 +504,7 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
             MOI.add_constraint(optimizer, vi, set)
         end
     end
+    return
 end
 
 # solve NLP subproblem defined by integer assignment
