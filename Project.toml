@@ -12,7 +12,7 @@ GLPK = "0.15"
 Ipopt = "0.8"
 JuMP = "0.22"
 MathOptInterface = "0.10.3"
-julia = "1"
+julia = "1.6"
 
 [extras]
 GLPK = "60bf3e95-4087-53dc-ae20-288a0d20c6a6"
