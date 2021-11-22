@@ -46,7 +46,11 @@ function run_minlptests(
     MINLPTests.test_nlp_mi(
         solver,
         exclude = String[
-            # TODO fix failures:
+            # ======================= Unexpected failures ======================
+            # LOCALLY_SOLVED  instead of LOCALLY_INFEASIBLE
+            "007_020",
+            # ======================== Expected failures =======================
+            # Nonconvex: contains sin(x)^2
             "003_010",
             "003_011",
             "003_012",
@@ -54,14 +58,16 @@ function run_minlptests(
             "003_014",
             "003_015",
             "003_016",
-            "007_010",
-            "007_020",
-            # Excluded tests
-            "006_010",  # User-defined function
+            # Non-convex: user-defined function y^3
+            "006_010",
         ],
         objective_tol = TOL,
         primal_tol = TOL,
         dual_tol = NaN,
+        primal_target = Dict(
+            MINLPTests.FEASIBLE_PROBLEM => MOI.FEASIBLE_POINT,
+            MINLPTests.INFEASIBLE_PROBLEM => MOI.NO_SOLUTION,
+        ),
     )
     return
 end
