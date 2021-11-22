@@ -20,26 +20,46 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     cont_optimizer::Union{Nothing,MOI.ModelLike}       # Continuous NLP optimizer instantiated from `cont_solver`
     infeasible_optimizer::Union{Nothing,MOI.ModelLike} # Continuous NLP optimizer instantiated from `cont_solver`, used for infeasible subproblems
 
-    nlp_obj_var::Union{Nothing,VI}  # new MIP objective function if the original is nonlinear
-    mip_variables::Vector{VI}        # Variable indices of `mip_optimizer`
-    cont_variables::Vector{VI}       # Variable indices of `cont_optimizer`
-    infeasible_variables::Vector{VI} # Variable indices of `infeasible_optimizer`
+    nlp_obj_var::Union{Nothing,MOI.VariableIndex}  # new MIP objective function if the original is nonlinear
+    mip_variables::Vector{MOI.VariableIndex}        # Variable indices of `mip_optimizer`
+    cont_variables::Vector{MOI.VariableIndex}       # Variable indices of `cont_optimizer`
+    infeasible_variables::Vector{MOI.VariableIndex} # Variable indices of `infeasible_optimizer`
 
     # Slack variable indices for `infeasible_optimizer`
-    nl_slack_variables::Union{Nothing,Vector{VI}} # for the nonlinear constraints
-    quad_LT_slack::Union{Nothing,Vector{VI}}      # for the less than constraints
-    quad_GT_slack::Union{Nothing,Vector{VI}}      # for the greater than constraints
+    nl_slack_variables::Union{Nothing,Vector{MOI.VariableIndex}} # for the nonlinear constraints
+    quad_LT_slack::Union{Nothing,Vector{MOI.VariableIndex}}      # for the less than constraints
+    quad_GT_slack::Union{Nothing,Vector{MOI.VariableIndex}}      # for the greater than constraints
 
     # Quadratic constraints for `infeasible_optimizer`
-    quad_LT_infeasible_con::Union{Nothing,Vector{MOI.ConstraintIndex{SQF,LT}}} # `q - slack <= ub`
-    quad_GT_infeasible_con::Union{Nothing,Vector{MOI.ConstraintIndex{SQF,GT}}} # `q + slack >= lb`
+    quad_LT_infeasible_con::Union{
+        Nothing,
+        Vector{
+            MOI.ConstraintIndex{
+                MOI.ScalarQuadraticFunction{Float64},
+                MOI.LessThan{Float64},
+            },
+        },
+    } # `q - slack <= ub`
+    quad_GT_infeasible_con::Union{
+        Nothing,
+        Vector{
+            MOI.ConstraintIndex{
+                MOI.ScalarQuadraticFunction{Float64},
+                MOI.GreaterThan{Float64},
+            },
+        },
+    } # `q + slack >= lb`
     infeasible_evaluator::InfeasibleNLPEvaluator # NLP evaluator used for `infeasible_optimizer`
     int_indices::BitSet                          # Indices of discrete variables
 
     nlp_block::Union{Nothing,MOI.NLPBlockData}           # NLP block set to `Optimizer`
     objective::Union{Nothing,MOI.AbstractScalarFunction} # Objective function set to `Optimizer`
-    quad_LT::Vector{Tuple{SQF,LT}}   # Cached quadratic less than constraints
-    quad_GT::Vector{Tuple{SQF,GT}}   # Cached quadratic greater than constraints
+    quad_LT::Vector{
+        Tuple{MOI.ScalarQuadraticFunction{Float64},MOI.LessThan{Float64}},
+    }   # Cached quadratic less than constraints
+    quad_GT::Vector{
+        Tuple{MOI.ScalarQuadraticFunction{Float64},MOI.GreaterThan{Float64}},
+    }   # Cached quadratic greater than constraints
     status::MOI.TerminationStatusCode # Termination status to be returned
     incumbent::Vector{Float64}    # Starting values set and then current best nonlinear feasible solution
     new_incumb::Bool              # `true` if a better nonlinear feasible solution was found
@@ -79,12 +99,12 @@ function MOI.optimize!(model::Optimizer)
     end
 
     if (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ||
-       model.objective isa SQF
+       model.objective isa MOI.ScalarQuadraticFunction{Float64}
         if isnothing(model.nlp_obj_var)
             model.nlp_obj_var = MOI.add_variable(model.mip_optimizer)
             MOI.set(
                 model.mip_optimizer,
-                MOI.ObjectiveFunction{VI}(),
+                MOI.ObjectiveFunction{MOI.VariableIndex}(),
                 model.nlp_obj_var,
             )
         end
@@ -108,7 +128,10 @@ function MOI.optimize!(model::Optimizer)
         obj_type = (
             (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ?
             "nonlinear" :
-            (model.objective isa SQF ? "quadratic" : "linear")
+            (
+                model.objective isa MOI.ScalarQuadraticFunction{Float64} ?
+                "quadratic" : "linear"
+            )
         )
         ncont = length(model.cont_variables)
         nint = length(model.int_indices)
@@ -194,7 +217,11 @@ function MOI.optimize!(model::Optimizer)
         model.status = ini_nlp_status
     else
         if !isnothing(cont_solution) &&
-           MOI.supports(model.mip_optimizer, MOI.VariablePrimalStart(), VI) &&
+           MOI.supports(
+               model.mip_optimizer,
+               MOI.VariablePrimalStart(),
+               MOI.VariableIndex,
+           ) &&
            all(isfinite, cont_solution)
             MOI.set(
                 model.mip_optimizer,
@@ -462,11 +489,12 @@ function fix_int_vars(optimizer::MOI.ModelLike, vars, mip_solution, int_indices)
     for i in int_indices
         vi = vars[i]
         idx = vi.value
-        ci = MOI.ConstraintIndex{VI,LT}(idx)
+        ci = MOI.ConstraintIndex{MOI.VariableIndex,MOI.LessThan{Float64}}(idx)
         MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
-        ci = MOI.ConstraintIndex{VI,GT}(idx)
+        ci =
+            MOI.ConstraintIndex{MOI.VariableIndex,MOI.GreaterThan{Float64}}(idx)
         MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
-        ci = MOI.ConstraintIndex{VI,MOI.EqualTo{Float64}}(idx)
+        ci = MOI.ConstraintIndex{MOI.VariableIndex,MOI.EqualTo{Float64}}(idx)
         set = MOI.EqualTo(mip_solution[i])
 
         if MOI.is_valid(optimizer, ci)
@@ -528,7 +556,9 @@ function solve_subproblem(model::Optimizer, comp::Function)
             )
         end
 
-        _add_to_obj(vi::VI) = push!(obj.terms, MOI.ScalarAffineTerm(1.0, vi))
+        function _add_to_obj(vi::MOI.VariableIndex)
+            return push!(obj.terms, MOI.ScalarAffineTerm(1.0, vi))
+        end
 
         if !isnothing(model.nlp_block) &&
            !isempty(model.nlp_block.constraint_bounds)
@@ -547,7 +577,7 @@ function solve_subproblem(model::Optimizer, comp::Function)
                 _add_to_obj(model.nl_slack_variables[i])
                 push!(bounds, MOI.NLPBoundsPair(0.0, Inf))
                 set = _bound_set(model, i)
-                if set isa LT
+                if set isa MOI.LessThan{Float64}
                     model.infeasible_evaluator.minus[i] = true
                 end
             end
@@ -734,11 +764,11 @@ function _bound_set(lb::T, ub::T) where {T}
                 "but only one bound is supported.",
             )
         else
-            return LT(ub)
+            return MOI.LessThan{Float64}(ub)
         end
     else
         if _has_lower(lb)
-            return GT(lb)
+            return MOI.GreaterThan{Float64}(lb)
         else
             error("Pavito needs one bound per NLP constraint.")
         end

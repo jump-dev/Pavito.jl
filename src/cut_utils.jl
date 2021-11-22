@@ -70,7 +70,7 @@ function add_quad_cuts(model::Optimizer, cont_solution, cons, callback_data)
                 term.coefficient * cont_solution[term.variable_2.value],
             )
             # if variables are the same, the coefficient is already multiplied by
-            # 2 by definition of `SQF`
+            # 2 by definition of `MOI.ScalarQuadraticFunction{Float64}`
             if term.variable_1 != term.variable_2
                 push!(dgc_idx, term.variable_2.value)
                 push!(
@@ -139,7 +139,7 @@ function add_cuts(
 
     # create objective cut
     if (!isnothing(model.nlp_block) && model.nlp_block.has_objective) ||
-       model.objective isa SQF
+       model.objective isa MOI.ScalarQuadraticFunction{Float64}
         f = eval_objective(model, cont_solution)
         eval_objective_gradient(model, grad_f, cont_solution)
 
@@ -154,7 +154,10 @@ function add_cuts(
                 )
             end
         end
-        set = (is_max ? GT(constant) : LT(constant))
+        set = (
+            is_max ? MOI.GreaterThan{Float64}(constant) :
+            MOI.LessThan{Float64}(constant)
+        )
 
         if isnothing(callback_data)
             MOI.add_constraint(model.mip_optimizer, func, set)
@@ -199,7 +202,11 @@ function eval_objective(model::Optimizer, values)
     end
 end
 
-function eval_gradient(func::SQF, grad_f, values)
+function eval_gradient(
+    func::MOI.ScalarQuadraticFunction{Float64},
+    grad_f,
+    values,
+)
     fill!(grad_f, 0.0)
     for term in func.affine_terms
         grad_f[term.variable.value] += term.coefficient
@@ -227,9 +234,9 @@ end
 _is_approx(x, y) = isapprox(x, y, atol = Base.rtoldefault(Float64))
 
 approx_in(value, set::MOI.EqualTo) = _is_approx(value, MOI.constant(set))
-function approx_in(value, set::LT)
+function approx_in(value, set::MOI.LessThan{Float64})
     return (_is_approx(value, MOI.constant(set)) || value < MOI.constant(set))
 end
-function approx_in(value, set::GT)
+function approx_in(value, set::MOI.GreaterThan{Float64})
     return (_is_approx(value, MOI.constant(set)) || value > MOI.constant(set))
 end

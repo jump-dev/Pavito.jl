@@ -21,9 +21,9 @@ function MOI.empty!(model::Optimizer)
     model.cont_optimizer = nothing
     model.infeasible_optimizer = nothing
     model.nlp_obj_var = nothing
-    model.mip_variables = VI[]
-    model.cont_variables = VI[]
-    model.infeasible_variables = VI[]
+    model.mip_variables = MOI.VariableIndex[]
+    model.cont_variables = MOI.VariableIndex[]
+    model.infeasible_variables = MOI.VariableIndex[]
     model.nl_slack_variables = nothing
     model.quad_LT_slack = nothing
     model.quad_GT_slack = nothing
@@ -33,8 +33,10 @@ function MOI.empty!(model::Optimizer)
 
     model.nlp_block = nothing
     model.objective = nothing
-    model.quad_LT = Tuple{SQF,LT}[]
-    model.quad_GT = Tuple{SQF,GT}[]
+    model.quad_LT =
+        Tuple{MOI.ScalarQuadraticFunction{Float64},MOI.LessThan{Float64}}[]
+    model.quad_GT =
+        Tuple{MOI.ScalarQuadraticFunction{Float64},MOI.GreaterThan{Float64}}[]
     model.incumbent = Float64[]
     model.status = MOI.OPTIMIZE_NOT_CALLED
     return
@@ -61,18 +63,29 @@ function MOI.add_variable(model::Optimizer)
         _clean_slacks(model)
     end
     push!(model.incumbent, NaN)
-    return VI(length(model.mip_variables))
+    return MOI.VariableIndex(length(model.mip_variables))
 end
 
-MOI.supports(::Optimizer, ::MOI.VariablePrimalStart, ::Type{VI}) = true
+function MOI.supports(
+    ::Optimizer,
+    ::MOI.VariablePrimalStart,
+    ::Type{MOI.VariableIndex},
+)
+    return true
+end
 
-function MOI.set(model::Optimizer, attr::MOI.VariablePrimalStart, vi::VI, value)
+function MOI.set(
+    model::Optimizer,
+    attr::MOI.VariablePrimalStart,
+    vi::MOI.VariableIndex,
+    value,
+)
     MOI.set(_cont(model), attr, vi, value)
     model.incumbent[vi.value] = something(value, NaN)
     return
 end
 
-function _map(variables::Vector{VI}, x)
+function _map(variables::Vector{MOI.VariableIndex}, x)
     return MOI.Utilities.map_indices(vi -> variables[vi.value], x)
 end
 
@@ -85,7 +98,7 @@ end
 
 function MOI.supports_constraint(
     model::Optimizer,
-    F::Type{VI},
+    F::Type{MOI.VariableIndex},
     S::Type{<:MOI.AbstractScalarSet},
 )
     return (
@@ -96,7 +109,7 @@ end
 
 function MOI.add_constraint(
     model::Optimizer,
-    func::VI,
+    func::MOI.VariableIndex,
     set::MOI.AbstractScalarSet,
 )
     if is_discrete(typeof(set))
@@ -114,20 +127,28 @@ end
 
 function MOI.supports_constraint(
     model::Optimizer,
-    F::Type{SQF},
-    S::Type{<:Union{LT,GT}},
+    F::Type{MOI.ScalarQuadraticFunction{Float64}},
+    S::Type{<:Union{MOI.LessThan{Float64},MOI.GreaterThan{Float64}}},
 )
     return MOI.supports_constraint(_cont(model), F, S)
 end
 
-function MOI.add_constraint(model::Optimizer, func::SQF, set::LT)
+function MOI.add_constraint(
+    model::Optimizer,
+    func::MOI.ScalarQuadraticFunction{Float64},
+    set::MOI.LessThan{Float64},
+)
     _clean_slacks(model)
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
     push!(model.quad_LT, (MOI.Utilities.canonical(func), copy(set)))
     return MOI.ConstraintIndex{typeof(func),typeof(set)}(length(model.quad_LT))
 end
 
-function MOI.add_constraint(model::Optimizer, func::SQF, set::GT)
+function MOI.add_constraint(
+    model::Optimizer,
+    func::MOI.ScalarQuadraticFunction{Float64},
+    set::MOI.GreaterThan{Float64},
+)
     _clean_slacks(model)
     MOI.add_constraint(_cont(model), _map(model.cont_variables, func), set)
     push!(model.quad_GT, (MOI.Utilities.canonical(func), copy(set)))
@@ -136,7 +157,10 @@ end
 
 function MOI.get(
     model::Optimizer,
-    attr::MOI.NumberOfConstraints{SQF,<:Union{LT,GT}},
+    attr::MOI.NumberOfConstraints{
+        MOI.ScalarQuadraticFunction{Float64},
+        <:Union{MOI.LessThan{Float64},MOI.GreaterThan{Float64}},
+    },
 )
     return MOI.get(_cont(model), attr)
 end
@@ -201,7 +225,10 @@ function MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction)
     return MOI.supports(_mip(model), attr) && MOI.supports(_cont(model), attr)
 end
 
-function MOI.supports(model::Optimizer, attr::MOI.ObjectiveFunction{SQF})
+function MOI.supports(
+    model::Optimizer,
+    attr::MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{Float64}},
+)
     return MOI.supports(_cont(model), attr)
 end
 
@@ -212,7 +239,11 @@ function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction, func)
     return MOI.set(_cont(model), attr, _map(model.cont_variables, func))
 end
 
-function MOI.set(model::Optimizer, attr::MOI.ObjectiveFunction{SQF}, func::SQF)
+function MOI.set(
+    model::Optimizer,
+    attr::MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{Float64}},
+    func::MOI.ScalarQuadraticFunction{Float64},
+)
     # make a copy (as the user might modify it) and canonicalize
     model.objective = MOI.Utilities.canonical(func)
     return MOI.set(_cont(model), attr, _map(model.cont_variables, func))
@@ -259,7 +290,11 @@ MOI.get(model::Optimizer, ::MOI.TerminationStatus) = model.status
 
 MOI.get(model::Optimizer, ::MOI.RawStatusString) = string(model.status)
 
-function MOI.get(model::Optimizer, attr::MOI.VariablePrimal, v::VI)
+function MOI.get(
+    model::Optimizer,
+    attr::MOI.VariablePrimal,
+    v::MOI.VariableIndex,
+)
     MOI.check_result_index_bounds(model, attr)
     return model.incumbent[v.value]
 end
