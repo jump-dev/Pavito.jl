@@ -19,7 +19,7 @@ function runtests(mip_solver, cont_solver)
             run_minlptests(msd, mip_solver, cont_solver, 0, 1e-3)
         end
         @testset "QP-NLP" begin
-            run_qp_nlp_tests(msd, gmip_solver, cont_solver, 0, 1e-3)
+            run_qp_nlp_tests(msd, mip_solver, cont_solver, 0, 1e-3)
         end
         @testset "log_level=$(log_level)" for log_level in 0:2
             run_log_level_tests(msd, mip_solver, cont_solver, log_level, 1e-3)
