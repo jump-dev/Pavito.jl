@@ -11,7 +11,7 @@
 
 module Pavito
 
-using Printf
+import Printf
 
 import MathOptInterface
 const MOI = MathOptInterface

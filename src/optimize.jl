@@ -435,18 +435,24 @@ function MOI.optimize!(model::Optimizer)
     model.total_time = time() - start
     if model.log_level > 0
         println("\nPavito finished...\n")
-        @printf "Status           %13s\n" model.status
-        @printf "Objective value  %13.5f\n" model.objective_value
-        @printf "Objective bound  %13.5f\n" model.objective_bound
-        @printf "Objective gap    %13.5f\n" model.objective_gap
+        Printf.@printf("Status           %13s\n", model.status)
+        Printf.@printf("Objective value  %13.5f\n", model.objective_value)
+        Printf.@printf("Objective bound  %13.5f\n", model.objective_bound)
+        Printf.@printf("Objective gap    %13.5f\n", model.objective_gap)
         if !model.mip_solver_drives
-            @printf "Iterations       %13d\n" model.num_iters_or_callbacks
+            Printf.@printf(
+                "Iterations       %13d\n",
+                model.num_iters_or_callbacks
+            )
         else
-            @printf "Callbacks        %13d\n" model.num_iters_or_callbacks
+            Printf.@printf(
+                "Callbacks        %13d\n",
+                model.num_iters_or_callbacks
+            )
         end
-        @printf "Total time       %13.5f sec\n" model.total_time
-        @printf "MIP total time   %13.5f sec\n" mip_time
-        @printf "NLP total time   %13.5f sec\n" nlp_time
+        Printf.@printf("Total time       %13.5f sec\n", model.total_time)
+        Printf.@printf("MIP total time   %13.5f sec\n", mip_time)
+        Printf.@printf("NLP total time   %13.5f sec\n", nlp_time)
         println()
     end
     flush(stdout)
@@ -707,33 +713,33 @@ end
 function printgap(model::Optimizer, start)
     if model.log_level >= 1
         if (model.num_iters_or_callbacks == 1) || (model.log_level >= 2)
-            @printf(
+            Printf.@printf(
                 "\n%-5s | %-14s | %-14s | %-11s | %-11s\n",
                 "Iter.",
                 "Best feasible",
                 "Best bound",
                 "Rel. gap",
-                "Time (s)"
+                "Time (s)",
             )
         end
         if model.objective_gap < 1000
-            @printf(
+            Printf.@printf(
                 "%5d | %+14.6e | %+14.6e | %11.3e | %11.3e\n",
                 model.num_iters_or_callbacks,
                 model.objective_value,
                 model.objective_bound,
                 model.objective_gap,
-                (time() - start)
+                time() - start,
             )
         else
             obj_gap = (isnan(model.objective_gap) ? "Inf" : ">1000")
-            @printf(
+            Printf.@printf(
                 "%5d | %+14.6e | %+14.6e | %11s | %11.3e\n",
                 model.num_iters_or_callbacks,
                 model.objective_value,
                 model.objective_bound,
                 obj_gap,
-                (time() - start)
+                time() - start,
             )
         end
         flush(stdout)
