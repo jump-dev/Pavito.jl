@@ -8,6 +8,13 @@
  MathOptInterface wrapper
 =========================================================#
 
+function MOI.get(::Optimizer, ::MOI.Bridges.ListOfNonstandardBridges)
+    return [
+        MOI.Bridges.Constraint.SOCtoNonConvexQuadBridge{Float64},
+        MOI.Bridges.Constraint.RSOCtoNonConvexQuadBridge{Float64},
+    ]
+end
+
 function MOI.is_empty(model::Optimizer)
     return (
         isnothing(model.mip_optimizer) || MOI.is_empty(model.mip_optimizer)
