@@ -8,25 +8,25 @@
  wrapped NLP solver for infeasible subproblem case
 =========================================================#
 
-struct InfeasibleNLPEvaluator <: MOI.AbstractNLPEvaluator
+struct _InfeasibleNLPEvaluator <: MOI.AbstractNLPEvaluator
     d::MOI.AbstractNLPEvaluator
     num_variables::Int
     minus::BitVector
 end
 
 function MOI.initialize(
-    d::InfeasibleNLPEvaluator,
+    d::_InfeasibleNLPEvaluator,
     requested_features::Vector{Symbol},
 )
     MOI.initialize(d.d, requested_features)
     return
 end
 
-function MOI.features_available(d::InfeasibleNLPEvaluator)
+function MOI.features_available(d::_InfeasibleNLPEvaluator)
     return intersect([:Grad, :Jac, :Hess], MOI.features_available(d.d))
 end
 
-function MOI.eval_constraint(d::InfeasibleNLPEvaluator, g, x)
+function MOI.eval_constraint(d::_InfeasibleNLPEvaluator, g, x)
     MOI.eval_constraint(d.d, g, x[1:d.num_variables])
     for i in eachindex(d.minus)
         g[i] -= sign(d.minus[i]) * x[d.num_variables+i]
@@ -34,7 +34,7 @@ function MOI.eval_constraint(d::InfeasibleNLPEvaluator, g, x)
     return
 end
 
-function MOI.jacobian_structure(d::InfeasibleNLPEvaluator)
+function MOI.jacobian_structure(d::_InfeasibleNLPEvaluator)
     IJ_new = copy(MOI.jacobian_structure(d.d))
     for i in eachindex(d.minus)
         push!(IJ_new, (i, d.num_variables + i))
@@ -42,7 +42,7 @@ function MOI.jacobian_structure(d::InfeasibleNLPEvaluator)
     return IJ_new
 end
 
-function MOI.eval_constraint_jacobian(d::InfeasibleNLPEvaluator, J, x)
+function MOI.eval_constraint_jacobian(d::_InfeasibleNLPEvaluator, J, x)
     MOI.eval_constraint_jacobian(d.d, J, x[1:d.num_variables])
     k = length(J) - length(d.minus)
     for i in eachindex(d.minus)
@@ -55,10 +55,10 @@ end
 # objective is zero and the hessian of the constraints is unaffected;
 # also set `σ = 0.0` to absorb the contribution of the hessian of the objective
 
-function MOI.hessian_lagrangian_structure(d::InfeasibleNLPEvaluator)
+function MOI.hessian_lagrangian_structure(d::_InfeasibleNLPEvaluator)
     return MOI.hessian_lagrangian_structure(d.d)
 end
 
-function MOI.eval_hessian_lagrangian(d::InfeasibleNLPEvaluator, H, x, σ, μ)
+function MOI.eval_hessian_lagrangian(d::_InfeasibleNLPEvaluator, H, x, σ, μ)
     return MOI.eval_hessian_lagrangian(d.d, H, x[1:d.num_variables], 0.0, μ)
 end

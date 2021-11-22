@@ -49,7 +49,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
             },
         },
     } # `q + slack >= lb`
-    infeasible_evaluator::InfeasibleNLPEvaluator # NLP evaluator used for `infeasible_optimizer`
+    infeasible_evaluator::_InfeasibleNLPEvaluator # NLP evaluator used for `infeasible_optimizer`
     int_indices::BitSet                          # Indices of discrete variables
 
     nlp_block::Union{Nothing,MOI.NLPBlockData}           # NLP block set to `Optimizer`
@@ -570,7 +570,7 @@ function _solve_subproblem(model::Optimizer, comp::Function)
         if !isnothing(model.nlp_block) &&
            !isempty(model.nlp_block.constraint_bounds)
             bounds = copy(model.nlp_block.constraint_bounds)
-            model.infeasible_evaluator = InfeasibleNLPEvaluator(
+            model.infeasible_evaluator = _InfeasibleNLPEvaluator(
                 model.nlp_block.evaluator,
                 length(model.infeasible_variables),
                 falses(length(model.nlp_block.constraint_bounds)),
@@ -594,7 +594,7 @@ function _solve_subproblem(model::Optimizer, comp::Function)
             )
         end
         # We need to add quadratic variables afterwards because
-        # `InfeasibleNLPEvaluator` assumes the original variables are directly
+        # `_InfeasibleNLPEvaluator` assumes the original variables are directly
         # followed by the NL slacks.
         if !isempty(model.quad_LT)
             model.quad_LT_slack =
@@ -667,7 +667,7 @@ function _solve_subproblem(model::Optimizer, comp::Function)
     end
     for i in eachindex(model.quad_LT)
         val =
-            eval_func(model.mip_solution, model.quad_LT[i][1]) -
+            _eval_func(model.mip_solution, model.quad_LT[i][1]) -
             model.quad_LT[i][2].upper
         MOI.set(
             _infeasible(model),
@@ -679,7 +679,7 @@ function _solve_subproblem(model::Optimizer, comp::Function)
     for i in eachindex(model.quad_GT)
         val =
             model.quad_GT[i][2].lower -
-            eval_func(model.mip_solution, model.quad_GT[i][1])
+            _eval_func(model.mip_solution, model.quad_GT[i][1])
         MOI.set(
             _infeasible(model),
             MOI.VariablePrimalStart(),
@@ -740,7 +740,7 @@ end
 
 # utilities:
 
-function eval_func(values, func)
+function _eval_func(values, func)
     return MOI.Utilities.eval_variables(vi -> values[vi.value], func)
 end
 
