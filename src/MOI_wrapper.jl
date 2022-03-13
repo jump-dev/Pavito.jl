@@ -335,24 +335,25 @@ end
 # utilities:
 
 function _mip(model::Optimizer)
-    if isnothing(model.mip_optimizer)
-        if isnothing(model.mip_solver)
-            error("No MIP solver specified (set `mip_solver` attribute)\n")
-        end
-
-        model.mip_optimizer =
-            MOI.instantiate(model.mip_solver, with_bridge_type = Float64)
-
-        supports_lazy =
-            MOI.supports(model.mip_optimizer, MOI.LazyConstraintCallback())
-        if isnothing(model.mip_solver_drives)
-            model.mip_solver_drives = supports_lazy
-        elseif model.mip_solver_drives && !supports_lazy
-            error(
-                "MIP solver (`mip_solver`) does not support lazy constraint " *
-                "callbacks (cannot set `mip_solver_drives` attribute to `true`)",
-            )
-        end
+    if model.mip_optimizer !== nothing
+        return model.mip_optimizer
+    end
+    if model.mip_solver === nothing
+        error("No MIP solver specified (set `mip_solver` attribute)\n")
+    end
+    model.mip_optimizer = MOI.Utilities.CachingOptimizer(
+        MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+        MOI.instantiate(model.mip_solver, with_bridge_type = Float64),
+    )
+    supports_lazy =
+        MOI.supports(model.mip_optimizer, MOI.LazyConstraintCallback())
+    if model.mip_solver_drives === nothing
+        model.mip_solver_drives = supports_lazy
+    elseif model.mip_solver_drives && !supports_lazy
+        error(
+            "MIP solver (`mip_solver`) does not support lazy constraint " *
+            "callbacks (cannot set `mip_solver_drives` attribute to `true`)",
+        )
     end
     return model.mip_optimizer
 end
