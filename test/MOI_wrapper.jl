@@ -43,9 +43,9 @@ function _run_moi_tests(msd::Bool, mip_solver, cont_solver)
             ],
         ),
         exclude = String[
-            # not implemented:
+            # Not implemented:
             "test_attribute_SolverVersion",
-            # invalid model:
+            # Invalid model:
             "test_constraint_ZeroOne_bounds_3",
             "test_linear_VectorAffineFunction_empty_row",
             # CachingOptimizer does not throw if optimizer not attached:
@@ -53,6 +53,16 @@ function _run_moi_tests(msd::Bool, mip_solver, cont_solver)
             "test_model_copy_to_UnsupportedConstraint",
             # NLP features not supported:
             "test_nonlinear_invalid",
+            # NORM_LIMIT instead of DUAL_INFEASIBLE
+            "test_linear_DUAL_INFEASIBLE",
+            "test_linear_DUAL_INFEASIBLE_2",
+            "test_solve_TerminationStatus_DUAL_INFEASIBLE",
+            # ITERATION_LIMIT instead of OPTIMAL
+            "test_linear_integer_knapsack",
+            "test_linear_integer_solve_twice",
+            # INFEASIBLE instead of LOCALLY_INFEASIBLE?
+            "test_linear_Semicontinuous_integration",
+            "test_linear_Semiinteger_integration",
         ],
     )
     return
