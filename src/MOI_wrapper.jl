@@ -106,6 +106,13 @@ function MOI.supports_constraint(
            (_is_discrete(S) || MOI.supports_constraint(_cont(model), F, S))
 end
 
+function MOI.is_valid(
+    model::Optimizer,
+    ci::MOI.ConstraintIndex{MOI.VariableIndex,<:MOI.AbstractScalarSet},
+)
+    return MOI.is_valid(_mip(model), ci)
+end
+
 function MOI.add_constraint(
     model::Optimizer,
     func::MOI.VariableIndex,
