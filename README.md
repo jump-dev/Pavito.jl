@@ -1,29 +1,36 @@
-# Pavito
+# Pavito.jl
 
 [![Build Status](https://github.com/jump-dev/Pavito.jl/workflows/CI/badge.svg)](https://github.com/jump-dev/Pavito.jl/actions)
 [![Coverage](https://codecov.io/gh/jump-dev/Pavito.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jump-dev/Pavito.jl)
 
-Pavito is a **mixed-integer convex programming** (MICP) solver package written
-in [Julia](http://julialang.org/). MICP problems are convex, except for
-restrictions that some variables take binary or integer values.
+[Pavito.jl](https://github.com/jump-dev/Pavito.jl) is a mixed-integer convex
+programming (MICP) solver package written in [Julia](http://julialang.org/).
+
+MICP problems are convex, except for restrictions that some variables take
+binary or integer values.
 
 Pavito solves MICP problems by constructing sequential polyhedral
-outer-approximations of the convex feasible set, similar to
-[Bonmin](https://projects.coin-or.org/Bonmin). Pavito accesses state-of-the-art
-MILP solvers and continuous, derivative-based nonlinear programming (NLP)
-solvers through the [MathOptInterface interface](https://github.com/jump-dev/MathOptInterface.jl).
+outer-approximations of the convex feasible set, similar to [Bonmin](https://projects.coin-or.org/Bonmin).
+
+Pavito accesses state-of-the-art MILP solvers and continuous, derivative-based
+nonlinear programming (NLP) solvers through [MathOptInterface](https://github.com/jump-dev/MathOptInterface.jl).
 
 For algorithms that use a conic solver instead of an NLP solver, use
-[Pajarito](https://github.com/JuliaOpt/Pajarito.jl). Pajarito is a robust
+[Pajarito](https://github.com/jump-dev/Pajarito.jl). Pajarito is a robust
 mixed-integer conic solver that can handle such established problem classes as
 mixed-integer second-order cone programming (MISOCP) and mixed-integer
 semidefinite programming (MISDP).
+
+## License
+
+`Pavito.jl` is licensed under the [MPL 2.0 license](https://github.com/jump-dev/Pavito.jl/blob/master/LICENSE.md).
 
 ## Installation
 
 Install Pavito using `Pkg.add`:
 ```julia
-import Pkg; Pkg.add("Pavito")
+import Pkg
+Pkg.add("Pavito")
 ```
 
 ## Use with JuMP
@@ -52,7 +59,7 @@ solver passed as `cont_solver`.
 For better performance, you should use a commercial MILP solver such as CPLEX
 or Gurobi.
 
-## Pavito solver options
+## Options
 
 The following optimizer attributes can set to a `Pavito.Optimizer` to modify its
 behavior:
@@ -76,10 +83,7 @@ feasibility tolerances should typically be tightened, for example to `1e-8`.
 
 ## Bug reports and support
 
-Please report any issues via the Github **[issue tracker]**. All types of issues
-are welcome and encouraged; this includes bug reports, documentation typos,
-feature requests, etc. The **[Optimization (Mathematical)]** category on
-Discourse is appropriate for general discussion.
-
-[issue tracker]: https://github.com/jump-dev/Pavito.jl/issues
-[Optimization (Mathematical)]: https://discourse.julialang.org/c/domain/opt
+Please report any issues via the [GitHub issue tracker](https://github.com/jump-dev/Pavito.jl/issues).
+All types of issues are welcome and encouraged; this includes bug reports,
+documentation typos, feature requests, etc. The [Optimization (Mathematical)](https://discourse.julialang.org/c/domain/opt) category on Discourse is appropriate for general
+discussion.
