@@ -336,7 +336,7 @@ end
 MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
 
 function MOI.get(model::Optimizer, ::MOI.ResultCount)
-    return MOI.get(model, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT ? 1 : 0
+    return MOI.get(model, MOI.PrimalStatus()) == MOI.NO_SOLUTION ? 0 : 1
 end
 
 # utilities:
