@@ -502,21 +502,29 @@ function _fix_int_vars(
     mip_solution,
     int_indices,
 )
+    F = MOI.VariableIndex
     for i in int_indices
-        vi = vars[i]
-        idx = vi.value
-        ci = MOI.ConstraintIndex{MOI.VariableIndex,MOI.LessThan{Float64}}(idx)
-        MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
-        ci =
-            MOI.ConstraintIndex{MOI.VariableIndex,MOI.GreaterThan{Float64}}(idx)
-        MOI.is_valid(optimizer, ci) && MOI.delete(optimizer, ci)
-        ci = MOI.ConstraintIndex{MOI.VariableIndex,MOI.EqualTo{Float64}}(idx)
+        x = vars[i]
+        # We need to delete any conflicting bound constraints before we set or
+        # update the x == mip_solution[i] constraint.
+        ci = MOI.ConstraintIndex{F,MOI.Interval{Float64}}(x.value)
+        if MOI.is_valid(optimizer, ci)
+            MOI.delete(optimizer, ci)
+        end
+        ci = MOI.ConstraintIndex{F,MOI.LessThan{Float64}}(x.value)
+        if MOI.is_valid(optimizer, ci)
+            MOI.delete(optimizer, ci)
+        end
+        ci = MOI.ConstraintIndex{F,MOI.GreaterThan{Float64}}(x.value)
+        if MOI.is_valid(optimizer, ci)
+            MOI.delete(optimizer, ci)
+        end
+        ci = MOI.ConstraintIndex{F,MOI.EqualTo{Float64}}(x.value)
         set = MOI.EqualTo(mip_solution[i])
-
         if MOI.is_valid(optimizer, ci)
             MOI.set(optimizer, MOI.ConstraintSet(), ci, set)
         else
-            MOI.add_constraint(optimizer, vi, set)
+            MOI.add_constraint(optimizer, x, set)
         end
     end
     return
