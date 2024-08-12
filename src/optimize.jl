@@ -539,7 +539,8 @@ function _solve_subproblem(model::Optimizer, comp::Function)
         model.int_indices,
     )
     MOI.optimize!(model.cont_optimizer)
-    if MOI.get(model.cont_optimizer, MOI.PrimalStatus()) == MOI.FEASIBLE_POINT
+    primal_status = MOI.get(model.cont_optimizer, MOI.PrimalStatus())
+    if primal_status in (MOI.FEASIBLE_POINT, MOI.NEARLY_FEASIBLE_POINT)
         # Subproblem is feasible, check if solution is new incumbent
         nlp_objective_value =
             MOI.get(model.cont_optimizer, MOI.ObjectiveValue())
