@@ -1,6 +1,6 @@
 # Pavito.jl
 
-[![Build Status](https://github.com/jump-dev/Pavito.jl/workflows/CI/badge.svg)](https://github.com/jump-dev/Pavito.jl/actions)
+[![Build Status](https://github.com/jump-dev/Pavito.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/jump-dev/Pavito.jl/actions)
 [![Coverage](https://codecov.io/gh/jump-dev/Pavito.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jump-dev/Pavito.jl)
 
 [Pavito.jl](https://github.com/jump-dev/Pavito.jl) is a mixed-integer convex
